@@ -43,12 +43,17 @@ input.code{text-transform:uppercase;letter-spacing:.08em;font-weight:600}
 .pill.past{background:#f1f5f9;color:#475569}
 .remove{background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:.8rem;padding:5px 10px;cursor:pointer;white-space:nowrap;margin-left:12px;flex-shrink:0}
 .remove:hover{border-color:var(--red);color:var(--red)}
-.banner{border-radius:10px;padding:14px 16px;font-size:.86rem;line-height:1.55;margin-bottom:18px;border:1px solid}
+.banner{border-radius:10px;padding:13px 16px;font-size:.86rem;line-height:1.55;margin-bottom:18px;border:1px solid}
 .banner.warn{background:#fffbeb;border-color:#fcd34d;color:#78350f}
-@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .banner.warn{background:#3b2f0b;border-color:#a16207;color:#fde68a}}
+.banner.info{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .banner.warn{background:#3b2f0b;border-color:#a16207;color:#fde68a}
+:root:not([data-theme=light]) .banner.info{background:#172554;border-color:#1e40af;color:#bfdbfe}}
 .banner a{color:inherit;font-weight:600}
 .banner ol{margin:8px 0 0 18px}
 .banner li{margin:3px 0}
+.setup-steps{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:.85rem;line-height:1.6}
+.setup-steps ol{margin:8px 0 0 18px}
+.setup-steps li{margin:4px 0}
 details summary{cursor:pointer;font-size:.85rem;color:var(--muted);font-weight:600;list-style:none;display:flex;align-items:center;gap:6px}
 details summary::before{content:'▸';transition:transform .15s}
 details[open] summary::before{transform:rotate(90deg)}
@@ -64,18 +69,13 @@ code{background:var(--bg);border:1px solid var(--border);padding:1px 5px;border-
   <a class="back" href="flight_tracker.html">← Back to dashboard</a>
 </div>
 
-<div id="setup-banner" class="banner warn" hidden>
-  <b>One-time setup needed to add or remove trips.</b><br>
-  This page saves the watchlist straight into the GitHub repo that powers the dashboard, so the tracker picks it up on its next run. It needs a GitHub token to write:
-  <ol>
-    <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Settings → Fine-grained tokens → Generate new token</a></li>
-    <li>Repository access: <b>Only select repositories</b> → <code>drgian/AirfareTracker</code></li>
-    <li>Permissions → Repository → <b>Contents: Read and write</b></li>
-    <li>Generate, copy the token, paste it below and click Save. It stays in this browser only.</li>
-  </ol>
+<div id="setup-banner" class="banner info" hidden>
+  <b>Viewing only on this device.</b>
+  Your trips are listed below, but adding and removing needs editing enabled —
+  <a href="#" onclick="openTokenSetup(event)">set it up on this device</a>.
 </div>
 
-<div class="card">
+<div class="card" id="add-card" hidden>
   <h2>Add a Trip to Watchlist</h2>
   <form id="add-form" onsubmit="handleAdd(event)">
 
@@ -147,15 +147,29 @@ code{background:var(--bg);border:1px solid var(--border);padding:1px 5px;border-
 
 <div class="card">
   <details id="token-details">
-    <summary>GitHub token</summary>
+    <summary>Enable editing on this device</summary>
     <div class="token-row">
       <input id="gh-token" type="password" placeholder="github_pat_…" autocomplete="off">
       <button class="btn" type="button" onclick="saveToken()">Save</button>
       <button class="btn secondary" type="button" onclick="clearToken()">Clear</button>
     </div>
     <div class="status" id="token-status"></div>
+    <div class="setup-steps">
+      Editing writes the watchlist into the GitHub repo behind the dashboard, which
+      needs a token. It's stored only in this browser, so each device needs its own.
+      <ol>
+        <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Settings → Fine-grained tokens → Generate new token</a></li>
+        <li>Repository access: <b>Only select repositories</b> → <code>drgian/AirfareTracker</code></li>
+        <li>Permissions → Repository → <b>Contents: Read and write</b></li>
+        <li>Generate it, then paste above and Save.</li>
+      </ol>
+    </div>
   </details>
 </div>
+
+<p class="status" style="text-align:center;margin-top:18px">
+  Interim version — being replaced by a proper app with sign-in, so trips work the same on every device.
+</p>
 
 <script>
 const OWNER='drgian', REPO='AirfareTracker', BRANCH='gh-pages', FILE='watchlist.json';
@@ -201,9 +215,20 @@ async function ghPut(trips,message){
   state.sha=j.content.sha;
 }
 
+function openTokenSetup(e){
+  if(e) e.preventDefault();
+  const d=document.getElementById('token-details');
+  d.open=true;
+  d.scrollIntoView({behavior:'smooth',block:'center'});
+  document.getElementById('gh-token').focus({preventScroll:true});
+}
+
 async function load(){
   const token=getToken();
+  // Without a token this device can read the watchlist but not change it, so
+  // show the list and hide the form rather than presenting a dead one.
   document.getElementById('setup-banner').hidden=!!token;
+  document.getElementById('add-card').hidden=!token;
   document.getElementById('add-btn').disabled=!token;
   if(token) document.getElementById('gh-token').value=token;
   try{
@@ -215,7 +240,7 @@ async function load(){
     }else{
       const r=await fetch(FILE+'?t='+Date.now(),{cache:'no-store'});
       state.trips=r.ok?((await r.json()).trips||[]):[];state.source='pages';
-      setWlStatus('read-only until a token is saved');
+      setWlStatus('');   // the banner already explains the read-only state
     }
   }catch(e){
     setTokenStatus('Error: '+e.message);
