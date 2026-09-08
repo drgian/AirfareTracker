@@ -44,8 +44,9 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
   <h1>✈ Flight Price Tracker</h1>
   <a class="add-btn" href="flight_manage.html">+ Add Trip</a>
 </div>
-<div class="tabs" id="tabs-row"><button class="tab-btn active" onclick="showTab('panel-0')" data-panel="panel-0" data-trip="grr-bon-2026-11-28" id="btn-0">Bonaire  Nov 28</button>
-<button class="tab-btn " onclick="showTab('panel-1')" data-panel="panel-1" data-trip="grr-lga-2026-09-29" id="btn-1">NYC  Sep 29</button></div>
+<div class="tabs" id="tabs-row"><button class="tab-btn active" onclick="showTab('panel-0')" data-panel="panel-0" data-trip="grr-bon-2026-11-28" id="btn-0">Bonaire Nov 28</button>
+<button class="tab-btn " onclick="showTab('panel-1')" data-panel="panel-1" data-trip="grr-lga-2026-09-29" id="btn-1">NYC Sep 29</button>
+<button class="tab-btn " onclick="showTab('panel-2')" data-panel="panel-2" data-trip="grr-fco-2027-01-15" id="btn-2">Rome January</button></div>
 <p class="sync-note" id="sync-note" hidden></p>
 
 <div class="tab-panel active" id="panel-0" data-trip="grr-bon-2026-11-28">
@@ -126,7 +127,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
 </script>
 
 <div class="tab-panel " id="panel-1" data-trip="grr-lga-2026-09-29">
-  <p class="subtitle">GRR → LGA  ·  2026-09-29 – 2026-10-02  ·  Comfort+</p>
+  <p class="subtitle">GRR → LGA  ·  2026-09-29 – 2026-10-02  ·  Main Classic</p>
   <div class="stats" id="stats-1"></div>
   <div class="chart-wrap"><canvas id="chart-1" height="220"></canvas></div>
   <div class="table-wrap">
@@ -202,7 +203,84 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
 })();
 </script>
 
-<p class="updated">Last updated: 2026-09-08 16:23 UTC</p>
+<div class="tab-panel " id="panel-2" data-trip="grr-fco-2027-01-15">
+  <p class="subtitle">GRR → FCO  ·  2027-01-15 – 2027-01-22  ·  Main Classic  ·  Out DL2547 / DL66  ·  Back DL67 / DL2865</p>
+  <div class="stats" id="stats-2"></div>
+  <div class="chart-wrap"><canvas id="chart-2" height="220"></canvas></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
+      <tbody id="tbody-2"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function(){
+  const DATA = [{"scraped_at": "2026-09-08T14:51:40.090542", "price": 1002.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-08T16:25:52.794024", "price": 1002.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}];
+  const i = 2;
+  const prices = DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  if (!prices.length) {
+    document.getElementById('tbody-'+i).innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ On the watchlist — waiting for the first price check (runs twice a day).</td></tr>';
+    document.getElementById('chart-'+i).parentElement.style.display='none';
+    return;
+  }
+  const minP=Math.min(...prices), maxP=Math.max(...prices);
+  const avgP=prices.reduce((a,b)=>a+b,0)/prices.length;
+  const priced=DATA.filter(d=>d.price);
+  const latest=priced[priced.length-1];
+  const prev=priced.slice(-2)[0];
+  const delta=latest&&prev&&prev!==latest?latest.price-prev.price:null;
+  const fmt=v=>v!=null?'$'+v.toLocaleString():'—';
+  const chg=delta!=null?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'—';
+  document.getElementById('stats-'+i).innerHTML=`
+    <div class="stat"><div class="stat-label">Latest</div><div class="stat-value blue">${fmt(latest.price)}</div></div>
+    <div class="stat"><div class="stat-label">Change</div><div class="stat-value">${chg}</div></div>
+    <div class="stat"><div class="stat-label">Lowest seen</div><div class="stat-value green">${fmt(minP)}</div></div>
+    <div class="stat"><div class="stat-label">Highest seen</div><div class="stat-value red">${fmt(maxP)}</div></div>
+    <div class="stat"><div class="stat-label">Avg</div><div class="stat-value">${avgP!=null?'$'+Math.round(avgP).toLocaleString():'—'}</div></div>
+  `;
+  const labels=priced.map(d=>{const dt=new Date(d.scraped_at+'Z');const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';return date+' '+(h%12||12)+':'+m+ampm;});
+  const vals=priced.map(d=>d.price);
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const gc=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
+  const tc=isDark?'#94a3b8':'#64748b';
+  new Chart(document.getElementById('chart-'+i),{
+    type:'line',
+    data:{labels,datasets:[{
+      label:'Price',data:vals,
+      borderColor:'#0d6efd',backgroundColor:'rgba(13,110,253,.08)',
+      borderWidth:2.5,pointRadius:5,tension:.3,fill:true,
+      pointBackgroundColor:vals.map(v=>v===minP?'#16a34a':v===maxP?'#dc2626':'#0d6efd'),
+    }]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y}`}}},
+      scales:{
+        x:{grid:{color:gc},ticks:{color:tc,maxTicksLimit:10}},
+        y:{grid:{color:gc},ticks:{color:tc,callback:v=>'$'+v},suggestedMin:minP*.92,suggestedMax:maxP*1.08}
+      }
+    }
+  });
+  const sorted=[...DATA].reverse();
+  document.getElementById('tbody-'+i).innerHTML=sorted.map(d=>{
+    const badge=d.price===minP?'<span class="badge badge-low">Low</span>':d.price===maxP?'<span class="badge badge-high">High</span>':d.price>avgP?'<span class="badge badge-mid">↑</span>':'';
+    const dt=new Date(d.scraped_at+'Z');
+    const ds=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const ts=dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const note=d.notes||'Main Classic';
+    return `<tr>
+      <td><b>${DAYS[dt.getDay()]}</b> ${ds} <span style="color:var(--muted);font-size:.8em">${ts}</span></td>
+      <td class="price-cell">${d.price?'$'+d.price.toLocaleString():'—'}</td>
+      <td style="color:var(--muted);font-size:.8rem">${note}</td>
+      <td style="color:var(--muted);font-size:.8rem;white-space:nowrap">${d.flights||'—'}</td>
+      <td>${d.depart_time??'—'}</td>
+      <td>${d.arrive_time??'—'}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+})();
+</script>
+
+<p class="updated">Last updated: 2026-09-08 16:25 UTC</p>
 
 <script>
 function showTab(id){
