@@ -1,0 +1,318 @@
+<title>Manage Trips</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈</text></svg>">
+<style>
+:root{--bg:#f8fafc;--card:#fff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;
+      --blue:#0d6efd;--green:#16a34a;--red:#dc2626;--amber:#f59e0b;}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0f172a;--card:#1e293b;--border:#334155;--text:#f1f5f9;--muted:#94a3b8;}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:24px 16px;max-width:720px;margin:0 auto}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+h1{font-size:1.3rem;font-weight:700}
+.back{color:var(--blue);text-decoration:none;font-size:.88rem;font-weight:600}
+.back:hover{text-decoration:underline}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 24px;margin-bottom:18px}
+.card h2{font-size:1rem;font-weight:700;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+.leg-section{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:12px}
+.leg-label{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.leg-label .opt{font-weight:400;text-transform:none;letter-spacing:0;opacity:.7}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row3{display:grid;grid-template-columns:1fr 1fr 2fr;gap:14px}
+@media(max-width:560px){.row,.row3{grid-template-columns:1fr}}
+label{display:block;font-size:.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+label .opt{font-weight:400;text-transform:none;letter-spacing:0;opacity:.7}
+input,select{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:.9rem;outline:none;transition:border-color .15s}
+input:focus,select:focus{border-color:var(--blue)}
+input.code{text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.hint{font-size:.74rem;color:var(--muted);margin-top:4px}
+.mt{margin-top:12px}
+.error{color:var(--red);font-size:.85rem;margin:8px 0;min-height:1.2em}
+.ok{color:var(--green);font-size:.85rem;margin:8px 0;min-height:1.2em}
+.btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:.9rem;font-weight:600;cursor:pointer;width:100%}
+.btn:hover{opacity:.88}.btn:disabled{opacity:.5;cursor:default}
+.btn.secondary{background:none;color:var(--blue);border:1.5px solid var(--border);width:auto;padding:7px 14px;font-size:.82rem}
+.empty{color:var(--muted);font-size:.9rem;text-align:center;padding:20px 0}
+.trip{display:flex;align-items:flex-start;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border)}
+.trip:last-child{border-bottom:none}
+.trip-label{font-weight:700;font-size:.95rem;margin-bottom:3px;display:flex;align-items:center;gap:8px}
+.trip-meta{font-size:.82rem;color:var(--muted);line-height:1.6}
+.pill{font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.04em}
+.pill.tracked{background:#dcfce7;color:#14532d}
+.pill.past{background:#f1f5f9;color:#475569}
+.remove{background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:.8rem;padding:5px 10px;cursor:pointer;white-space:nowrap;margin-left:12px;flex-shrink:0}
+.remove:hover{border-color:var(--red);color:var(--red)}
+.banner{border-radius:10px;padding:14px 16px;font-size:.86rem;line-height:1.55;margin-bottom:18px;border:1px solid}
+.banner.warn{background:#fffbeb;border-color:#fcd34d;color:#78350f}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .banner.warn{background:#3b2f0b;border-color:#a16207;color:#fde68a}}
+.banner a{color:inherit;font-weight:600}
+.banner ol{margin:8px 0 0 18px}
+.banner li{margin:3px 0}
+details summary{cursor:pointer;font-size:.85rem;color:var(--muted);font-weight:600;list-style:none;display:flex;align-items:center;gap:6px}
+details summary::before{content:'▸';transition:transform .15s}
+details[open] summary::before{transform:rotate(90deg)}
+.token-row{display:flex;gap:10px;margin-top:12px}
+.token-row input{flex:1}
+.token-row button{width:auto;padding:9px 16px}
+.status{font-size:.78rem;color:var(--muted);margin-top:8px}
+code{background:var(--bg);border:1px solid var(--border);padding:1px 5px;border-radius:4px;font-size:.82em}
+</style>
+
+<div class="header">
+  <h1>✈ Manage Trips</h1>
+  <a class="back" href="flight_tracker.html">← Back to dashboard</a>
+</div>
+
+<div id="setup-banner" class="banner warn" hidden>
+  <b>One-time setup needed to add or remove trips.</b><br>
+  This page saves the watchlist straight into the GitHub repo that powers the dashboard, so the tracker picks it up on its next run. It needs a GitHub token to write:
+  <ol>
+    <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Settings → Fine-grained tokens → Generate new token</a></li>
+    <li>Repository access: <b>Only select repositories</b> → <code>drgian/AirfareTracker</code></li>
+    <li>Permissions → Repository → <b>Contents: Read and write</b></li>
+    <li>Generate, copy the token, paste it below and click Save. It stays in this browser only.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <h2>Add a Trip to Watchlist</h2>
+  <form id="add-form" onsubmit="handleAdd(event)">
+
+    <div class="row3">
+      <div>
+        <label>From</label>
+        <input id="f-from" class="code" placeholder="GRR" maxlength="3" autocomplete="off">
+      </div>
+      <div>
+        <label>To</label>
+        <input id="f-to" class="code" placeholder="FCO" maxlength="3" autocomplete="off">
+      </div>
+      <div>
+        <label>Trip Label <span class="opt">(optional)</span></label>
+        <input id="f-label" placeholder="e.g. Rome January">
+      </div>
+    </div>
+    <div class="hint" style="margin:4px 0 14px">Airport codes — Delta's search needs the route. The flight numbers below pick the exact itinerary out of the results.</div>
+
+    <div class="leg-section">
+      <div class="leg-label">Outbound</div>
+      <div class="row">
+        <div>
+          <label>Departure Date</label>
+          <input id="f-dep" type="date">
+        </div>
+        <div>
+          <label>Flight(s) <span class="opt">(optional)</span></label>
+          <input id="f-out" placeholder="DL2547, DL66" maxlength="60" autocomplete="off" autocapitalize="characters">
+          <div class="hint">Connecting flights in order, comma-separated</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="leg-section">
+      <div class="leg-label">Return <span class="opt">(leave blank for one-way)</span></div>
+      <div class="row">
+        <div>
+          <label>Return Date</label>
+          <input id="f-ret" type="date">
+        </div>
+        <div>
+          <label>Flight(s) <span class="opt">(optional)</span></label>
+          <input id="f-ret-flights" placeholder="DL67, DL2865" maxlength="60" autocomplete="off" autocapitalize="characters">
+        </div>
+      </div>
+    </div>
+
+    <div class="row mt">
+      <div>
+        <label>Fare to track</label>
+        <select id="f-cabin">
+          <option value="main_classic">Main Classic</option>
+          <option value="comfort">Comfort+</option>
+          <option value="first">First</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="error" id="form-error"></div>
+    <button class="btn" type="submit" id="add-btn">Add Trip to Watchlist</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Watchlist <span id="wl-status" class="status"></span></h2>
+  <div id="trip-list"><div class="empty">Loading…</div></div>
+</div>
+
+<div class="card">
+  <details id="token-details">
+    <summary>GitHub token</summary>
+    <div class="token-row">
+      <input id="gh-token" type="password" placeholder="github_pat_…" autocomplete="off">
+      <button class="btn" type="button" onclick="saveToken()">Save</button>
+      <button class="btn secondary" type="button" onclick="clearToken()">Clear</button>
+    </div>
+    <div class="status" id="token-status"></div>
+  </details>
+</div>
+
+<script>
+const OWNER='drgian', REPO='AirfareTracker', BRANCH='gh-pages', FILE='watchlist.json';
+const API=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`;
+
+let state={trips:[],sha:null,source:null};
+
+function getToken(){try{return localStorage.getItem('gh-token')||'';}catch{return '';}}
+function saveToken(){
+  const t=document.getElementById('gh-token').value.trim();
+  if(!t){setTokenStatus('Paste a token first.');return;}
+  try{localStorage.setItem('gh-token',t);}catch{}
+  setTokenStatus('Saved. Checking access…');
+  load();
+}
+function clearToken(){try{localStorage.removeItem('gh-token');}catch{} document.getElementById('gh-token').value='';setTokenStatus('Token cleared.');load();}
+function setTokenStatus(m){document.getElementById('token-status').textContent=m;}
+function setWlStatus(m){document.getElementById('wl-status').textContent=m;}
+
+function b64encode(str){return btoa(unescape(encodeURIComponent(str)));}
+function b64decode(b64){return decodeURIComponent(escape(atob(b64.replace(/\n/g,''))));}
+
+async function ghGet(){
+  const r=await fetch(`${API}?ref=${BRANCH}&t=${Date.now()}`,{
+    headers:{'Authorization':'Bearer '+getToken(),'Accept':'application/vnd.github+json'},cache:'no-store'});
+  if(r.status===404) return {trips:[],sha:null};
+  if(!r.ok) throw new Error('GitHub API '+r.status+(r.status===401?' — token rejected':''));
+  const j=await r.json();
+  const data=JSON.parse(b64decode(j.content));
+  return {trips:data.trips||[],sha:j.sha};
+}
+async function ghPut(trips,message){
+  const body={message,branch:BRANCH,content:b64encode(JSON.stringify({trips},null,2)+'\n')};
+  if(state.sha) body.sha=state.sha;
+  const r=await fetch(API,{method:'PUT',
+    headers:{'Authorization':'Bearer '+getToken(),'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+    body:JSON.stringify(body)});
+  if(!r.ok){
+    let detail='';try{detail=(await r.json()).message||'';}catch{}
+    throw new Error('Save failed ('+r.status+') '+detail);
+  }
+  const j=await r.json();
+  state.sha=j.content.sha;
+}
+
+async function load(){
+  const token=getToken();
+  document.getElementById('setup-banner').hidden=!!token;
+  document.getElementById('add-btn').disabled=!token;
+  if(token) document.getElementById('gh-token').value=token;
+  try{
+    if(token){
+      const d=await ghGet();
+      state.trips=d.trips;state.sha=d.sha;state.source='github';
+      setTokenStatus('Token OK — read/write access confirmed.');
+      setWlStatus('');
+    }else{
+      const r=await fetch(FILE+'?t='+Date.now(),{cache:'no-store'});
+      state.trips=r.ok?((await r.json()).trips||[]):[];state.source='pages';
+      setWlStatus('read-only until a token is saved');
+    }
+  }catch(e){
+    setTokenStatus('Error: '+e.message);
+    setWlStatus('could not load');
+    if(!state.trips.length){
+      try{const r=await fetch(FILE+'?t='+Date.now(),{cache:'no-store'});state.trips=r.ok?((await r.json()).trips||[]):[];}catch{}
+    }
+  }
+  render();
+}
+
+function render(){
+  const el=document.getElementById('trip-list');
+  const today=new Date().toISOString().slice(0,10);
+  const trips=[...state.trips].sort((a,b)=>a.travel_date.localeCompare(b.travel_date));
+  if(!trips.length){el.innerHTML='<div class="empty">No trips on the watchlist yet.</div>';return;}
+  const canEdit=!!getToken();
+  el.innerHTML=trips.map(t=>{
+    const past=t.travel_date<today;
+    const pill=past?'<span class="pill past">departed</span>':'<span class="pill tracked">tracking</span>';
+    const dates=t.travel_date+(t.return_date?' → '+t.return_date:' (one-way)');
+    const fl=[t.outbound_flights?'Out: '+t.outbound_flights:'',t.return_flights?'Back: '+t.return_flights:''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+    const cabin={main_classic:'Main Classic',comfort:'Comfort+',first:'First'}[t.cabin_class]||t.cabin_class||'';
+    return `<div class="trip">
+      <div>
+        <div class="trip-label">${esc(t.label||t.origin+'→'+t.destination)} ${pill}</div>
+        <div class="trip-meta">${esc(t.origin)} → ${esc(t.destination)} &nbsp;·&nbsp; ${esc(dates)} &nbsp;·&nbsp; ${esc(cabin)}${fl?'<br>'+fl:''}</div>
+      </div>
+      ${canEdit?`<button class="remove" onclick="removeTrip('${esc(t.id)}')">Remove</button>`:''}
+    </div>`;
+  }).join('');
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function parseFlights(raw){
+  const segs=raw.trim().toUpperCase().split(/[\s,\/]+/).filter(Boolean);
+  for(const s of segs){
+    if(!/^[A-Z0-9]{2}\d{1,4}$/.test(s)) return {error:`"${s}" isn't a valid flight number (e.g. DL2453).`};
+  }
+  return {flights:segs.join(' / ')};
+}
+
+async function removeTrip(id){
+  const t=state.trips.find(x=>x.id===id);
+  if(!t||!confirm(`Remove "${t.label||id}" from the watchlist? Price tracking for it will stop.`)) return;
+  setWlStatus('saving…');
+  try{
+    const next=state.trips.filter(x=>x.id!==id);
+    await ghPut(next,`Watchlist: remove ${t.label||id}`);
+    state.trips=next;setWlStatus('saved');render();
+  }catch(e){setWlStatus('');alert(e.message);}
+}
+
+async function handleAdd(e){
+  e.preventDefault();
+  const err=document.getElementById('form-error');err.textContent='';
+  const from=document.getElementById('f-from').value.trim().toUpperCase();
+  const to=document.getElementById('f-to').value.trim().toUpperCase();
+  const label=document.getElementById('f-label').value.trim();
+  const dep=document.getElementById('f-dep').value;
+  const rawOut=document.getElementById('f-out').value.trim();
+  const ret=document.getElementById('f-ret').value;
+  const rawRet=document.getElementById('f-ret-flights').value.trim();
+  const cabin=document.getElementById('f-cabin').value;
+
+  if(!/^[A-Z]{3}$/.test(from)) {err.textContent='From: enter a 3-letter airport code (e.g. GRR).';return;}
+  if(!/^[A-Z]{3}$/.test(to))   {err.textContent='To: enter a 3-letter airport code (e.g. FCO).';return;}
+  if(from===to){err.textContent='From and To must be different.';return;}
+  if(!dep){err.textContent='Departure date is required.';return;}
+  const today=new Date().toISOString().slice(0,10);
+  if(dep<today){err.textContent='Departure date must be today or later.';return;}
+  let outFl='',retFl='';
+  if(rawOut){const p=parseFlights(rawOut);if(p.error){err.textContent=p.error;return;}outFl=p.flights;}
+  if(rawRet&&!ret){err.textContent='Add a return date for the return flights.';return;}
+  if(ret){
+    if(ret<=dep){err.textContent='Return date must be after the departure date.';return;}
+    if(rawRet){const p=parseFlights(rawRet);if(p.error){err.textContent=p.error;return;}retFl=p.flights;}
+  }
+  const id=`${from}-${to}-${dep}`.toLowerCase();
+  if(state.trips.some(t=>t.id===id)){err.textContent='That route and date is already on the watchlist.';return;}
+
+  const trip={id,label:label||`${from}→${to} ${dep}`,origin:from,destination:to,
+    travel_date:dep,return_date:ret||'',outbound_flights:outFl,return_flights:retFl,
+    cabin_class:cabin,added:today};
+  const btn=document.getElementById('add-btn');btn.disabled=true;setWlStatus('saving…');
+  try{
+    // Re-read first so we never overwrite a concurrent edit
+    const d=await ghGet();state.trips=d.trips;state.sha=d.sha;
+    if(state.trips.some(t=>t.id===id)){err.textContent='That route and date is already on the watchlist.';render();return;}
+    const next=[...state.trips,trip];
+    await ghPut(next,`Watchlist: add ${trip.label}`);
+    state.trips=next;
+    document.getElementById('add-form').reset();
+    setWlStatus('saved — tracking starts on the next run');render();
+  }catch(ex){err.textContent=ex.message;setWlStatus('');}
+  finally{btn.disabled=!getToken();}
+}
+
+load();
+</script>
