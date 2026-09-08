@@ -1,0 +1,40 @@
+﻿{
+  "trips": [
+    {
+      "id": "grr-bon-2026-11-28",
+      "label": "Bonaire Nov 28",
+      "origin": "GRR",
+      "destination": "BON",
+      "travel_date": "2026-11-28",
+      "return_date": "2026-12-05",
+      "outbound_flights": "",
+      "return_flights": "",
+      "cabin_class": "main_classic",
+      "added": "2026-09-02"
+    },
+    {
+      "id": "grr-lga-2026-09-29",
+      "label": "NYC Sep 29",
+      "origin": "GRR",
+      "destination": "LGA",
+      "travel_date": "2026-09-29",
+      "return_date": "2026-10-02",
+      "outbound_flights": "",
+      "return_flights": "",
+      "cabin_class": "main_classic",
+      "added": "2026-09-02"
+    },
+    {
+      "id": "grr-fco-2027-01-15",
+      "label": "Rome January",
+      "origin": "GRR",
+      "destination": "FCO",
+      "travel_date": "2027-01-15",
+      "return_date": "2027-01-22",
+      "outbound_flights": "DL2547 / DL66",
+      "return_flights": "DL67 / DL2865",
+      "cabin_class": "main_classic",
+      "added": "2026-09-08"
+    }
+  ]
+}

@@ -1,0 +1,341 @@
+<title>Flight Price Tracker</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈</text></svg>">
+<style>
+:root{--bg:#f8fafc;--card:#fff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;
+      --blue:#0d6efd;--green:#16a34a;--red:#dc2626;}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0f172a;--card:#1e293b;--border:#334155;--text:#f1f5f9;--muted:#94a3b8;}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:20px 16px;max-width:960px;margin:0 auto}
+.header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+h1{font-size:1.3rem;font-weight:700}
+.add-btn{background:var(--blue);color:#fff;border-radius:8px;padding:7px 15px;font-size:.84rem;font-weight:600;text-decoration:none;white-space:nowrap}
+.add-btn:hover{opacity:.85}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0}
+.tab-btn{padding:8px 18px;border:none;background:none;color:var(--muted);font-size:.9rem;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .15s;display:flex;align-items:center;gap:6px}
+.tab-btn.active,.tab-btn:hover{color:var(--blue)}
+.tab-btn.active{border-bottom-color:var(--blue)}
+.pending-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#f59e0b}
+.tab-panel{display:none}.tab-panel.active{display:block}
+.sync-note{font-size:.78rem;color:var(--muted);margin:-10px 0 14px}
+.subtitle{color:var(--muted);font-size:.85rem;margin-bottom:16px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;min-width:110px}
+.stat-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.stat-value{font-size:1.5rem;font-weight:700;margin-top:2px}
+.stat-value.blue{color:var(--blue)}.stat-value.green{color:var(--green)}.stat-value.red{color:var(--red)}
+.chart-wrap{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;overflow-x:auto}
+canvas{display:block;width:100%!important}
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;padding:8px 12px;background:var(--bg);color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--border)}
+td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{border:none}
+.price-cell{font-weight:700}
+.badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:.72rem;font-weight:600}
+.badge-low{background:#dcfce7;color:#14532d}.badge-high{background:#fee2e2;color:#7f1d1d}.badge-mid{background:#fef3c7;color:#78350f}
+.updated{font-size:.75rem;color:var(--muted);margin-top:12px}
+.empty-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--muted);font-size:.9rem}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<div class="header-row">
+  <h1>✈ Flight Price Tracker</h1>
+  <a class="add-btn" href="flight_manage.html">+ Add Trip</a>
+</div>
+<div class="tabs" id="tabs-row"><button class="tab-btn active" onclick="showTab('panel-0')" data-panel="panel-0" data-trip="grr-bon-2026-11-28" id="btn-0">Bonaire Nov 28</button>
+<button class="tab-btn " onclick="showTab('panel-1')" data-panel="panel-1" data-trip="grr-lga-2026-09-29" id="btn-1">NYC Sep 29</button>
+<button class="tab-btn " onclick="showTab('panel-2')" data-panel="panel-2" data-trip="grr-fco-2027-01-15" id="btn-2">Rome January</button></div>
+<p class="sync-note" id="sync-note" hidden></p>
+
+<div class="tab-panel active" id="panel-0" data-trip="grr-bon-2026-11-28">
+  <p class="subtitle">GRR → BON  ·  2026-11-28 – 2026-12-05  ·  Main Classic</p>
+  <div class="stats" id="stats-0"></div>
+  <div class="chart-wrap"><canvas id="chart-0" height="220"></canvas></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
+      <tbody id="tbody-0"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function(){
+  const DATA = [{"scraped_at": "2026-09-02T08:00:00.000000", "price": 1249.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main Classic", "flights": null}, {"scraped_at": "2026-09-03T08:00:00.000000", "price": 1249.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main Classic", "flights": null}, {"scraped_at": "2026-09-04T14:58:41.893487", "price": 1079.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-06T02:14:44.865910", "price": 1541.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-06T17:23:17.200728", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-07T18:59:51.764699", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-07T21:33:08.698300", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T10:00:49.894981", "price": 1123.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T13:56:33.915848", "price": 1293.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": null}];
+  const i = 0;
+  const prices = DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  if (!prices.length) {
+    document.getElementById('tbody-'+i).innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ On the watchlist — waiting for the first price check (runs twice a day).</td></tr>';
+    document.getElementById('chart-'+i).parentElement.style.display='none';
+    return;
+  }
+  const minP=Math.min(...prices), maxP=Math.max(...prices);
+  const avgP=prices.reduce((a,b)=>a+b,0)/prices.length;
+  const priced=DATA.filter(d=>d.price);
+  const latest=priced[priced.length-1];
+  const prev=priced.slice(-2)[0];
+  const delta=latest&&prev&&prev!==latest?latest.price-prev.price:null;
+  const fmt=v=>v!=null?'$'+v.toLocaleString():'—';
+  const chg=delta!=null?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'—';
+  document.getElementById('stats-'+i).innerHTML=`
+    <div class="stat"><div class="stat-label">Latest</div><div class="stat-value blue">${fmt(latest.price)}</div></div>
+    <div class="stat"><div class="stat-label">Change</div><div class="stat-value">${chg}</div></div>
+    <div class="stat"><div class="stat-label">Lowest seen</div><div class="stat-value green">${fmt(minP)}</div></div>
+    <div class="stat"><div class="stat-label">Highest seen</div><div class="stat-value red">${fmt(maxP)}</div></div>
+    <div class="stat"><div class="stat-label">Avg</div><div class="stat-value">${avgP!=null?'$'+Math.round(avgP).toLocaleString():'—'}</div></div>
+  `;
+  const labels=priced.map(d=>{const dt=new Date(d.scraped_at+'Z');const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';return date+' '+(h%12||12)+':'+m+ampm;});
+  const vals=priced.map(d=>d.price);
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const gc=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
+  const tc=isDark?'#94a3b8':'#64748b';
+  new Chart(document.getElementById('chart-'+i),{
+    type:'line',
+    data:{labels,datasets:[{
+      label:'Price',data:vals,
+      borderColor:'#0d6efd',backgroundColor:'rgba(13,110,253,.08)',
+      borderWidth:2.5,pointRadius:5,tension:.3,fill:true,
+      pointBackgroundColor:vals.map(v=>v===minP?'#16a34a':v===maxP?'#dc2626':'#0d6efd'),
+    }]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y}`}}},
+      scales:{
+        x:{grid:{color:gc},ticks:{color:tc,maxTicksLimit:10}},
+        y:{grid:{color:gc},ticks:{color:tc,callback:v=>'$'+v},suggestedMin:minP*.92,suggestedMax:maxP*1.08}
+      }
+    }
+  });
+  const sorted=[...DATA].reverse();
+  document.getElementById('tbody-'+i).innerHTML=sorted.map(d=>{
+    const badge=d.price===minP?'<span class="badge badge-low">Low</span>':d.price===maxP?'<span class="badge badge-high">High</span>':d.price>avgP?'<span class="badge badge-mid">↑</span>':'';
+    const dt=new Date(d.scraped_at+'Z');
+    const ds=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const ts=dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const note=d.notes||'Main Classic';
+    return `<tr>
+      <td><b>${DAYS[dt.getDay()]}</b> ${ds} <span style="color:var(--muted);font-size:.8em">${ts}</span></td>
+      <td class="price-cell">${d.price?'$'+d.price.toLocaleString():'—'}</td>
+      <td style="color:var(--muted);font-size:.8rem">${note}</td>
+      <td style="color:var(--muted);font-size:.8rem;white-space:nowrap">${d.flights||'—'}</td>
+      <td>${d.depart_time??'—'}</td>
+      <td>${d.arrive_time??'—'}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+})();
+</script>
+
+<div class="tab-panel " id="panel-1" data-trip="grr-lga-2026-09-29">
+  <p class="subtitle">GRR → LGA  ·  2026-09-29 – 2026-10-02  ·  Main Classic</p>
+  <div class="stats" id="stats-1"></div>
+  <div class="chart-wrap"><canvas id="chart-1" height="220"></canvas></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
+      <tbody id="tbody-1"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function(){
+  const DATA = [{"scraped_at": "2026-09-07T21:49:27.249185", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T01:00:52.305883", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T10:02:07.453728", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}];
+  const i = 1;
+  const prices = DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  if (!prices.length) {
+    document.getElementById('tbody-'+i).innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ On the watchlist — waiting for the first price check (runs twice a day).</td></tr>';
+    document.getElementById('chart-'+i).parentElement.style.display='none';
+    return;
+  }
+  const minP=Math.min(...prices), maxP=Math.max(...prices);
+  const avgP=prices.reduce((a,b)=>a+b,0)/prices.length;
+  const priced=DATA.filter(d=>d.price);
+  const latest=priced[priced.length-1];
+  const prev=priced.slice(-2)[0];
+  const delta=latest&&prev&&prev!==latest?latest.price-prev.price:null;
+  const fmt=v=>v!=null?'$'+v.toLocaleString():'—';
+  const chg=delta!=null?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'—';
+  document.getElementById('stats-'+i).innerHTML=`
+    <div class="stat"><div class="stat-label">Latest</div><div class="stat-value blue">${fmt(latest.price)}</div></div>
+    <div class="stat"><div class="stat-label">Change</div><div class="stat-value">${chg}</div></div>
+    <div class="stat"><div class="stat-label">Lowest seen</div><div class="stat-value green">${fmt(minP)}</div></div>
+    <div class="stat"><div class="stat-label">Highest seen</div><div class="stat-value red">${fmt(maxP)}</div></div>
+    <div class="stat"><div class="stat-label">Avg</div><div class="stat-value">${avgP!=null?'$'+Math.round(avgP).toLocaleString():'—'}</div></div>
+  `;
+  const labels=priced.map(d=>{const dt=new Date(d.scraped_at+'Z');const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';return date+' '+(h%12||12)+':'+m+ampm;});
+  const vals=priced.map(d=>d.price);
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const gc=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
+  const tc=isDark?'#94a3b8':'#64748b';
+  new Chart(document.getElementById('chart-'+i),{
+    type:'line',
+    data:{labels,datasets:[{
+      label:'Price',data:vals,
+      borderColor:'#0d6efd',backgroundColor:'rgba(13,110,253,.08)',
+      borderWidth:2.5,pointRadius:5,tension:.3,fill:true,
+      pointBackgroundColor:vals.map(v=>v===minP?'#16a34a':v===maxP?'#dc2626':'#0d6efd'),
+    }]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y}`}}},
+      scales:{
+        x:{grid:{color:gc},ticks:{color:tc,maxTicksLimit:10}},
+        y:{grid:{color:gc},ticks:{color:tc,callback:v=>'$'+v},suggestedMin:minP*.92,suggestedMax:maxP*1.08}
+      }
+    }
+  });
+  const sorted=[...DATA].reverse();
+  document.getElementById('tbody-'+i).innerHTML=sorted.map(d=>{
+    const badge=d.price===minP?'<span class="badge badge-low">Low</span>':d.price===maxP?'<span class="badge badge-high">High</span>':d.price>avgP?'<span class="badge badge-mid">↑</span>':'';
+    const dt=new Date(d.scraped_at+'Z');
+    const ds=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const ts=dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const note=d.notes||'Main Classic';
+    return `<tr>
+      <td><b>${DAYS[dt.getDay()]}</b> ${ds} <span style="color:var(--muted);font-size:.8em">${ts}</span></td>
+      <td class="price-cell">${d.price?'$'+d.price.toLocaleString():'—'}</td>
+      <td style="color:var(--muted);font-size:.8rem">${note}</td>
+      <td style="color:var(--muted);font-size:.8rem;white-space:nowrap">${d.flights||'—'}</td>
+      <td>${d.depart_time??'—'}</td>
+      <td>${d.arrive_time??'—'}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+})();
+</script>
+
+<div class="tab-panel " id="panel-2" data-trip="grr-fco-2027-01-15">
+  <p class="subtitle">GRR → FCO  ·  2027-01-15 – 2027-01-22  ·  Main Classic  ·  Out DL2547 / DL66  ·  Back DL67 / DL2865</p>
+  <div class="stats" id="stats-2"></div>
+  <div class="chart-wrap"><canvas id="chart-2" height="220"></canvas></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
+      <tbody id="tbody-2"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function(){
+  const DATA = [{"scraped_at": "2026-09-08T14:51:40.090542", "price": 1002.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}];
+  const i = 2;
+  const prices = DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  if (!prices.length) {
+    document.getElementById('tbody-'+i).innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ On the watchlist — waiting for the first price check (runs twice a day).</td></tr>';
+    document.getElementById('chart-'+i).parentElement.style.display='none';
+    return;
+  }
+  const minP=Math.min(...prices), maxP=Math.max(...prices);
+  const avgP=prices.reduce((a,b)=>a+b,0)/prices.length;
+  const priced=DATA.filter(d=>d.price);
+  const latest=priced[priced.length-1];
+  const prev=priced.slice(-2)[0];
+  const delta=latest&&prev&&prev!==latest?latest.price-prev.price:null;
+  const fmt=v=>v!=null?'$'+v.toLocaleString():'—';
+  const chg=delta!=null?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'—';
+  document.getElementById('stats-'+i).innerHTML=`
+    <div class="stat"><div class="stat-label">Latest</div><div class="stat-value blue">${fmt(latest.price)}</div></div>
+    <div class="stat"><div class="stat-label">Change</div><div class="stat-value">${chg}</div></div>
+    <div class="stat"><div class="stat-label">Lowest seen</div><div class="stat-value green">${fmt(minP)}</div></div>
+    <div class="stat"><div class="stat-label">Highest seen</div><div class="stat-value red">${fmt(maxP)}</div></div>
+    <div class="stat"><div class="stat-label">Avg</div><div class="stat-value">${avgP!=null?'$'+Math.round(avgP).toLocaleString():'—'}</div></div>
+  `;
+  const labels=priced.map(d=>{const dt=new Date(d.scraped_at+'Z');const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';return date+' '+(h%12||12)+':'+m+ampm;});
+  const vals=priced.map(d=>d.price);
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const gc=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
+  const tc=isDark?'#94a3b8':'#64748b';
+  new Chart(document.getElementById('chart-'+i),{
+    type:'line',
+    data:{labels,datasets:[{
+      label:'Price',data:vals,
+      borderColor:'#0d6efd',backgroundColor:'rgba(13,110,253,.08)',
+      borderWidth:2.5,pointRadius:5,tension:.3,fill:true,
+      pointBackgroundColor:vals.map(v=>v===minP?'#16a34a':v===maxP?'#dc2626':'#0d6efd'),
+    }]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y}`}}},
+      scales:{
+        x:{grid:{color:gc},ticks:{color:tc,maxTicksLimit:10}},
+        y:{grid:{color:gc},ticks:{color:tc,callback:v=>'$'+v},suggestedMin:minP*.92,suggestedMax:maxP*1.08}
+      }
+    }
+  });
+  const sorted=[...DATA].reverse();
+  document.getElementById('tbody-'+i).innerHTML=sorted.map(d=>{
+    const badge=d.price===minP?'<span class="badge badge-low">Low</span>':d.price===maxP?'<span class="badge badge-high">High</span>':d.price>avgP?'<span class="badge badge-mid">↑</span>':'';
+    const dt=new Date(d.scraped_at+'Z');
+    const ds=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const ts=dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const note=d.notes||'Main Classic';
+    return `<tr>
+      <td><b>${DAYS[dt.getDay()]}</b> ${ds} <span style="color:var(--muted);font-size:.8em">${ts}</span></td>
+      <td class="price-cell">${d.price?'$'+d.price.toLocaleString():'—'}</td>
+      <td style="color:var(--muted);font-size:.8rem">${note}</td>
+      <td style="color:var(--muted);font-size:.8rem;white-space:nowrap">${d.flights||'—'}</td>
+      <td>${d.depart_time??'—'}</td>
+      <td>${d.arrive_time??'—'}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+})();
+</script>
+
+<p class="updated">Last updated: 2026-09-08 14:51 UTC</p>
+
+<script>
+function showTab(id){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id===id));
+  document.querySelectorAll('[data-panel]').forEach(b=>b.classList.toggle('active',b.dataset.panel===id));
+}
+
+// ── Live sync with watchlist.json ────────────────────────────────────────────
+// This page is regenerated only when the tracker runs.  Between runs the
+// watchlist may have changed (trips added/removed on the manage page), so we
+// fetch the live file and add placeholder tabs / hide removed ones.
+(function(){
+  const rendered=new Set(Array.from(document.querySelectorAll('.tab-panel[data-trip]')).map(p=>p.dataset.trip));
+  fetch('watchlist.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(wl=>{
+    if(!wl||!Array.isArray(wl.trips)) return;
+    const live=new Set(wl.trips.map(t=>t.id));
+    const tabsEl=document.getElementById('tabs-row');
+    const updatedEl=document.querySelector('p.updated');
+    let added=0,removed=0;
+    // Trips removed since the last run → hide their tab
+    document.querySelectorAll('[data-trip]').forEach(el=>{
+      if(!live.has(el.dataset.trip)){el.remove();removed++;}
+    });
+    // Trips added since the last run → placeholder tab
+    wl.trips.forEach(t=>{
+      if(rendered.has(t.id)) return;
+      const pid='pending-'+t.id;
+      const btn=document.createElement('button');
+      btn.className='tab-btn';btn.dataset.panel=pid;btn.dataset.trip=t.id;
+      btn.onclick=()=>showTab(pid);
+      btn.textContent=t.label||(t.origin+'→'+t.destination);
+      const dot=document.createElement('span');dot.className='pending-dot';dot.title='Waiting for first price check';
+      btn.appendChild(dot);
+      tabsEl.appendChild(btn);
+      const panel=document.createElement('div');
+      panel.className='tab-panel';panel.id=pid;panel.dataset.trip=t.id;
+      const bits=[t.origin+' → '+t.destination,t.travel_date+(t.return_date?' – '+t.return_date:'')];
+      if(t.outbound_flights) bits.push('Out '+t.outbound_flights);
+      if(t.return_flights) bits.push('Back '+t.return_flights);
+      const sub=document.createElement('p');sub.className='subtitle';sub.textContent=bits.join('  ·  ');
+      const card=document.createElement('div');card.className='empty-card';
+      card.textContent='⏳ Added to the watchlist — the first price will be captured on the next tracker run (runs twice a day).';
+      panel.appendChild(sub);panel.appendChild(card);
+      updatedEl.insertAdjacentElement('beforebegin',panel);
+      added++;
+    });
+    if(!document.querySelector('.tab-panel.active')){
+      const first=document.querySelector('.tab-panel');
+      if(first) showTab(first.id);
+    }
+    if(added||removed){
+      const n=document.getElementById('sync-note');
+      n.hidden=false;
+      n.textContent='Watchlist updated since the last price check: '+(added?added+' new trip(s) pending':'')+(added&&removed?', ':'')+(removed?removed+' removed':'')+'.';
+    }
+  }).catch(()=>{});
+})();
+</script>
