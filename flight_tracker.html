@@ -37,6 +37,12 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
 .badge-low{background:#dcfce7;color:#14532d}.badge-high{background:#fee2e2;color:#7f1d1d}.badge-mid{background:#fef3c7;color:#78350f}
 .updated{font-size:.75rem;color:var(--muted);margin-top:12px}
 .empty-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--muted);font-size:.9rem}
+.history-details{margin-bottom:8px}
+.history-summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:6px 2px;color:var(--muted);font-size:.82rem;font-weight:600;user-select:none;letter-spacing:.02em}
+.history-summary::-webkit-details-marker{display:none}
+.history-summary:hover{color:var(--text)}
+.toggle-icon{font-size:.7em;transition:transform .18s;display:inline-block}
+details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
@@ -53,12 +59,15 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
   <p class="subtitle">GRR → BON  ·  2026-11-28 – 2026-12-05  ·  Main Classic</p>
   <div class="stats" id="stats-0"></div>
   <div class="chart-wrap"><canvas id="chart-0" height="220"></canvas></div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
-      <tbody id="tbody-0"></tbody>
-    </table>
-  </div>
+  <details class="history-details">
+    <summary class="history-summary"><span class="toggle-icon">▶</span> Price history — <span id="hist-count-0"></span> checks</summary>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
+        <tbody id="tbody-0"></tbody>
+      </table>
+    </div>
+  </details>
 </div>
 <script>
 (function(){
@@ -123,6 +132,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
       <td>${badge}</td>
     </tr>`;
   }).join('');
+  const hc0=document.getElementById('hist-count-'+i);if(hc0)hc0.textContent=DATA.length;
 })();
 </script>
 
@@ -130,12 +140,15 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
   <p class="subtitle">GRR → LGA  ·  2026-09-29 – 2026-10-02  ·  Main Classic</p>
   <div class="stats" id="stats-1"></div>
   <div class="chart-wrap"><canvas id="chart-1" height="220"></canvas></div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
-      <tbody id="tbody-1"></tbody>
-    </table>
-  </div>
+  <details class="history-details">
+    <summary class="history-summary"><span class="toggle-icon">▶</span> Price history — <span id="hist-count-1"></span> checks</summary>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
+        <tbody id="tbody-1"></tbody>
+      </table>
+    </div>
+  </details>
 </div>
 <script>
 (function(){
@@ -200,6 +213,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
       <td>${badge}</td>
     </tr>`;
   }).join('');
+  const hc1=document.getElementById('hist-count-'+i);if(hc1)hc1.textContent=DATA.length;
 })();
 </script>
 
@@ -207,12 +221,15 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
   <p class="subtitle">GRR → FCO  ·  2027-01-15 – 2027-01-22  ·  Main Classic  ·  Out DL2547 / DL66  ·  Back DL67 / DL2865</p>
   <div class="stats" id="stats-2"></div>
   <div class="chart-wrap"><canvas id="chart-2" height="220"></canvas></div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
-      <tbody id="tbody-2"></tbody>
-    </table>
-  </div>
+  <details class="history-details">
+    <summary class="history-summary"><span class="toggle-icon">▶</span> Price history — <span id="hist-count-2"></span> checks</summary>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date checked</th><th>Price</th><th>Fare class</th><th>Flights</th><th>Departs</th><th>Arrives</th><th></th></tr></thead>
+        <tbody id="tbody-2"></tbody>
+      </table>
+    </div>
+  </details>
 </div>
 <script>
 (function(){
@@ -277,6 +294,7 @@ td{padding:9px 12px;border-bottom:1px solid var(--border)}tr:last-child td{borde
       <td>${badge}</td>
     </tr>`;
   }).join('');
+  const hc2=document.getElementById('hist-count-'+i);if(hc2)hc2.textContent=DATA.length;
 })();
 </script>
 
@@ -339,3 +357,4 @@ function showTab(id){
   }).catch(()=>{});
 })();
 </script>
+
