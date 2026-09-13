@@ -612,7 +612,13 @@ async def main():
         ).fetchone()
         prev_price = prev["price_usd"] if prev else None
 
-        result = await scrape_trip(cfg, trip)
+        # Some proxy IPs are datacenter-flagged and get blocked; each attempt draws a new IP
+        for attempt in range(3):
+            result = await scrape_trip(cfg, trip)
+            if result:
+                break
+            if attempt < 2:
+                print("  Retrying on a new IP...")
 
         now = utcnow()
         if result:
