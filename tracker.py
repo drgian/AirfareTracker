@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Flight price tracker — Delta.com → GitHub Pages dashboard."""
 
-import asyncio, json, re, smtplib, sqlite3, subprocess, sys, os
+import asyncio, json, re, secrets, smtplib, subprocess, sys, os
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
+import psycopg
+from psycopg.rows import dict_row
 from playwright.async_api import async_playwright
 
 # playwright-stealth 2.x exposes Stealth(); 1.x exposed stealth_async()
@@ -28,9 +30,7 @@ def utcnow():
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR  = Path(__file__).parent
-DB_FILE   = BASE_DIR / "prices.db"
 CFG_FILE  = BASE_DIR / "config.json"
-WL_FILE   = BASE_DIR / "watchlist.json"
 REPO_DIR  = Path.home() / "airfaretracker-repo"
 PROFILE   = str(Path.home() / ".config" / "delta-tracker-profile")
 DASHBOARD = "https://drgian.github.io/AirfareTracker/flight_tracker.html"
@@ -41,27 +41,24 @@ def load_cfg():
         return json.load(f)
 
 # ── Database ──────────────────────────────────────────────────────────────────
-def open_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("""CREATE TABLE IF NOT EXISTS price_history (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        trip_id     TEXT    NOT NULL DEFAULT 'grr-bon-2026-11-28',
-        scraped_at  TEXT    NOT NULL,
-        price_usd   REAL,
-        airline     TEXT,
-        stops       TEXT,
-        depart_time TEXT,
-        arrive_time TEXT,
-        notes       TEXT,
-        flights     TEXT
-    )""")
-    # migration: add trip_id to older DBs
-    try:
-        conn.execute("ALTER TABLE price_history ADD COLUMN trip_id TEXT DEFAULT 'grr-bon-2026-11-28'")
-    except Exception:
-        pass
-    conn.commit()
+SCHEMA = """CREATE TABLE IF NOT EXISTS price_history (
+    id          SERIAL PRIMARY KEY,
+    trip_id     TEXT NOT NULL,
+    scraped_at  TIMESTAMP NOT NULL,
+    price_usd   DOUBLE PRECISION,
+    airline     TEXT,
+    stops       TEXT,
+    depart_time TEXT,
+    arrive_time TEXT,
+    notes       TEXT,
+    flights     TEXT
+);
+CREATE INDEX IF NOT EXISTS price_history_trip_time ON price_history (trip_id, scraped_at);"""
+
+def open_db(cfg):
+    conn = psycopg.connect(cfg.get("database_url", "dbname=flighttracker"),
+                           row_factory=dict_row, autocommit=True)
+    conn.execute(SCHEMA)
     return conn
 
 # ── pick_best ─────────────────────────────────────────────────────────────────
@@ -133,7 +130,7 @@ def fire_alerts(cfg, trip, new_price, prev_price):
         send_email(cfg, emails, subj, body)
 
 # ── Scraper ───────────────────────────────────────────────────────────────────
-async def scrape_trip(trip):
+async def scrape_trip(cfg, trip):
     origin      = trip["origin"]
     dest        = trip["destination"]
     travel_date = trip["travel_date"]
@@ -142,10 +139,17 @@ async def scrape_trip(trip):
 
     print(f"  Scraping {origin}→{dest} ({travel_date})...")
 
+    # Delta blocks datacenter IPs, so traffic must go through a residential proxy.
+    # IPRoyal reads targeting from the password; a fresh session id = a new sticky US IP per trip.
+    proxy = dict(cfg["proxy"]) if cfg.get("proxy") else None
+    if proxy and "_session-" not in proxy["password"]:
+        proxy["password"] += f"_country-us_session-{secrets.token_hex(4)}_lifetime-30m"
+
     async with async_playwright() as p:
         ctx = await p.chromium.launch_persistent_context(
             PROFILE,
             headless=True,
+            proxy=proxy,
             args=[
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
@@ -153,6 +157,10 @@ async def scrape_trip(trip):
             ],
             viewport={"width": 1280, "height": 900},
         )
+        # Proxy is billed per GB; images/fonts/media aren't needed to read prices
+        await ctx.route("**/*", lambda route: route.abort()
+                        if route.request.resource_type in ("image", "font", "media")
+                        else route.continue_())
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         if HAS_STEALTH:
             await apply_stealth(page)
@@ -298,12 +306,14 @@ async def scrape_trip(trip):
 def generate_html(conn, trips):
     def trip_rows(trip_id):
         rows = conn.execute(
-            "SELECT scraped_at, price_usd as price, airline, stops, "
+            "SELECT scraped_at, price_usd AS price, airline, stops, "
             "depart_time, arrive_time, notes, flights "
-            "FROM price_history WHERE trip_id=? ORDER BY scraped_at",
+            "FROM price_history WHERE trip_id=%s AND price_usd IS NOT NULL ORDER BY scraped_at",
             (trip_id,),
         ).fetchall()
-        return [dict(r) for r in rows]
+        for r in rows:
+            r["scraped_at"] = r["scraped_at"].isoformat()
+        return rows
 
     def subtitle(t):
         parts = [
@@ -535,21 +545,20 @@ function showTab(id){{
 """
 
 # ── GitHub push ───────────────────────────────────────────────────────────────
-def push_to_github(cfg, html_content):
-    token   = cfg.get("github_token", "")
-    repo_url = (
-        f"https://{token}@github.com/drgian/AirfareTracker.git"
-        if token else
-        "https://github.com/drgian/AirfareTracker.git"
-    )
-
+def sync_repo(cfg):
+    """Clone or update the gh-pages checkout so we see trips added on the Manage page."""
+    genv = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     if not REPO_DIR.exists():
-        print("  Cloning AirfareTracker gh-pages...")
-        subprocess.run(
-            ["git", "clone", "-b", "gh-pages", repo_url, str(REPO_DIR)],
-            check=True, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-        )
+        token = cfg.get("github_token", "")
+        repo_url = f"https://{token}@github.com/drgian/AirfareTracker.git"
+        print("Cloning AirfareTracker gh-pages...")
+        subprocess.run(["git", "clone", "-b", "gh-pages", repo_url, str(REPO_DIR)],
+                       check=True, env=genv)
+    else:
+        subprocess.run(["git", "-C", str(REPO_DIR), "pull", "--rebase", "origin", "gh-pages"],
+                       check=True, env=genv)
 
+def push_to_github(cfg, html_content):
     (REPO_DIR / "flight_tracker.html").write_text(html_content, encoding="utf-8")
 
     git  = ["git", "-C", str(REPO_DIR)]
@@ -572,23 +581,14 @@ def push_to_github(cfg, html_content):
 # ── Main ──────────────────────────────────────────────────────────────────────
 async def main():
     cfg = load_cfg()
-    conn = open_db()
+    conn = open_db(cfg)
+    sync_repo(cfg)
 
-    if WL_FILE.exists():
-        with open(WL_FILE) as f:
-            trips = json.load(f).get("trips", [])
-    else:
-        trips = [{
-            "id":           f"{cfg['origin'].lower()}-{cfg['destination'].lower()}-{cfg['travel_date']}",
-            "origin":       cfg["origin"],
-            "destination":  cfg["destination"],
-            "travel_date":  cfg["travel_date"],
-            "return_date":  cfg.get("return_date", ""),
-            "cabin_class":  cfg.get("cabin_class", "main_classic"),
-        }]
+    with open(REPO_DIR / "watchlist.json") as f:
+        trips = json.load(f).get("trips", [])
 
     max_per_day = cfg.get("max_runs_per_day", 2)
-    today       = datetime.now().strftime("%Y-%m-%d")
+    today       = utcnow().date()
     any_scraped = False
 
     for trip in trips:
@@ -596,10 +596,10 @@ async def main():
         print(f"\n── {trip.get('label', trip_id)} ──")
 
         runs_today = conn.execute(
-            "SELECT COUNT(*) FROM price_history "
-            "WHERE trip_id=? AND scraped_at LIKE ? AND price_usd IS NOT NULL",
-            (trip_id, today + "%"),
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS n FROM price_history "
+            "WHERE trip_id=%s AND scraped_at::date=%s AND price_usd IS NOT NULL",
+            (trip_id, today),
+        ).fetchone()["n"]
 
         if runs_today >= max_per_day:
             print(f"  Already {runs_today} price(s) today — skipping.")
@@ -607,32 +607,30 @@ async def main():
 
         prev = conn.execute(
             "SELECT price_usd FROM price_history "
-            "WHERE trip_id=? AND price_usd IS NOT NULL ORDER BY scraped_at DESC LIMIT 1",
+            "WHERE trip_id=%s AND price_usd IS NOT NULL ORDER BY scraped_at DESC LIMIT 1",
             (trip_id,),
         ).fetchone()
-        prev_price = prev[0] if prev else None
+        prev_price = prev["price_usd"] if prev else None
 
-        result = await scrape_trip(trip)
+        result = await scrape_trip(cfg, trip)
 
-        now_str = utcnow().isoformat()
+        now = utcnow()
         if result:
             conn.execute(
                 "INSERT INTO price_history "
                 "(trip_id, scraped_at, price_usd, airline, stops, depart_time, arrive_time, notes, flights) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                (trip_id, now_str, result["price"], result.get("airline"),
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (trip_id, now, result["price"], result.get("airline"),
                  result.get("stops"), result.get("depart_time"), result.get("arrive_time"),
                  result.get("fare_class", "Main"), result.get("flights")),
             )
-            conn.commit()
             any_scraped = True
             fire_alerts(cfg, trip, result["price"], prev_price)
         else:
             conn.execute(
-                "INSERT INTO price_history (trip_id, scraped_at, price_usd, notes) VALUES (?,?,NULL,'scrape failed')",
-                (trip_id, now_str),
+                "INSERT INTO price_history (trip_id, scraped_at, notes) VALUES (%s,%s,'scrape failed')",
+                (trip_id, now),
             )
-            conn.commit()
 
     if any_scraped:
         print("\n── Updating dashboard ──")
