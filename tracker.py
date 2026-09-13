@@ -2,19 +2,29 @@
 """Flight price tracker — Delta.com → GitHub Pages dashboard."""
 
 import asyncio, json, re, smtplib, sqlite3, subprocess, sys, os
-from datetime import datetime
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
 from playwright.async_api import async_playwright
 
+# playwright-stealth 2.x exposes Stealth(); 1.x exposed stealth_async()
 try:
-    from playwright_stealth import stealth_async
+    from playwright_stealth import Stealth
+    async def apply_stealth(page):
+        await Stealth().apply_stealth_async(page)
     HAS_STEALTH = True
 except ImportError:
-    HAS_STEALTH = False
-    print("Warning: playwright-stealth not installed; WAF bypass disabled")
+    try:
+        from playwright_stealth import stealth_async as apply_stealth
+        HAS_STEALTH = True
+    except ImportError:
+        HAS_STEALTH = False
+        print("Warning: playwright-stealth not installed; WAF bypass disabled")
+
+def utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR  = Path(__file__).parent
@@ -145,7 +155,7 @@ async def scrape_trip(trip):
         )
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         if HAS_STEALTH:
-            await stealth_async(page)
+            await apply_stealth(page)
 
         result = None
         try:
@@ -154,6 +164,18 @@ async def scrape_trip(trip):
                 timeout=90000, wait_until="domcontentloaded",
             )
             await page.wait_for_timeout(4000)
+
+            try:
+                await page.wait_for_selector("#fromAirportName", timeout=30000)
+            except Exception:
+                shot = BASE_DIR / f"debug_{trip['id']}.png"
+                await page.screenshot(path=str(shot), full_page=True)
+                title = await page.title()
+                body  = (await page.inner_text("body"))[:400].replace("\n", " | ")
+                print(f"  Search form never appeared. Title: {title!r}")
+                print(f"  Page text: {body}")
+                print(f"  Screenshot: {shot}")
+                raise
 
             # Origin
             await page.click("#fromAirportName")
@@ -398,7 +420,7 @@ def generate_html(conn, trips):
 </script>
 """
 
-    now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    now_utc = utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
     return f"""<title>Flight Price Tracker</title>
 <meta charset="utf-8">
@@ -542,7 +564,7 @@ def push_to_github(cfg, html_content):
         print("  No dashboard changes to push.")
         return
 
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    now = utcnow().strftime("%Y-%m-%d %H:%M UTC")
     subprocess.run(git + ["commit", "-m", f"Update prices {now}"], check=True, env=genv)
     subprocess.run(git + ["push", "origin", "gh-pages"],            check=True, env=genv)
     print("  Dashboard pushed.")
@@ -592,7 +614,7 @@ async def main():
 
         result = await scrape_trip(trip)
 
-        now_str = datetime.utcnow().isoformat()
+        now_str = utcnow().isoformat()
         if result:
             conn.execute(
                 "INSERT INTO price_history "
