@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Flight price tracker — Delta.com → GitHub Pages dashboard."""
 
-import asyncio, json, re, smtplib, socket, subprocess, sys, os, time
+import asyncio, json, re, shutil, smtplib, socket, subprocess, sys, os, time
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -18,11 +18,13 @@ def utcnow():
 BASE_DIR  = Path(__file__).resolve().parent
 CFG_FILE  = BASE_DIR / "config.json"
 REPO_DIR  = BASE_DIR / "site-repo"
-DASHBOARD = "https://drgian.github.io/AirfareTracker/flight_tracker.html"
+DASHBOARD = "https://flightfare.io/flight_tracker.html"
+# Task Scheduler may not see PATH changes made by installers until a reboot
+GIT = shutil.which("git") or r"C:\Program Files\Git\cmd\git.exe"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 def load_cfg():
-    with open(CFG_FILE) as f:
+    with open(CFG_FILE, encoding="utf-8-sig") as f:
         return json.load(f)
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -49,7 +51,7 @@ def open_tunnel(cfg):
         return None
     port = t.get("local_port", 55432)
     proc = subprocess.Popen(
-        ["ssh", "-i", t["key"], "-N", "-o", "ExitOnForwardFailure=yes",
+        ["ssh", "-i", str(BASE_DIR / t["key"]), "-N", "-o", "ExitOnForwardFailure=yes",
          "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30",
          "-L", f"{port}:localhost:5432", f"{t['user']}@{t['host']}"])
     for _ in range(40):
@@ -138,6 +140,7 @@ CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     "/usr/bin/google-chrome",
+    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
 ]
 CDP_PORT = 9333
 CABIN_TO_BRAND = {"main_basic": "BMAIN", "main_classic": "CMAIN", "main_extra": "EMAIN",
@@ -295,7 +298,10 @@ async def scrape_trips(cfg, trips):
                         break
                     if attempt == 0:
                         print("  Retrying...")
-            await browser.close()
+            # Shut Chrome down via DevTools; killing only its main process can leave
+            # helpers holding the profile lock, which breaks the next run
+            cdp = await browser.new_browser_cdp_session()
+            await cdp.send("Browser.close")
     finally:
         chrome.terminate()
     return results
@@ -550,16 +556,16 @@ def sync_repo(cfg):
         token = cfg.get("github_token", "")
         repo_url = f"https://{token}@github.com/drgian/AirfareTracker.git"
         print("Cloning AirfareTracker gh-pages...")
-        subprocess.run(["git", "clone", "-b", "gh-pages", repo_url, str(REPO_DIR)],
+        subprocess.run([GIT, "clone", "-b", "gh-pages", repo_url, str(REPO_DIR)],
                        check=True, env=genv)
     else:
-        subprocess.run(["git", "-C", str(REPO_DIR), "pull", "--rebase", "origin", "gh-pages"],
+        subprocess.run([GIT, "-C", str(REPO_DIR), "pull", "--rebase", "origin", "gh-pages"],
                        check=True, env=genv)
 
 def push_to_github(cfg, html_content):
     (REPO_DIR / "flight_tracker.html").write_text(html_content, encoding="utf-8")
 
-    git  = ["git", "-C", str(REPO_DIR)]
+    git  = [GIT, "-C", str(REPO_DIR)]
     genv = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
 
     subprocess.run(git + ["config", "user.email", "tracker@local"], check=True)
@@ -582,8 +588,7 @@ WATCHLIST_URL = "https://raw.githubusercontent.com/drgian/AirfareTracker/gh-page
 async def run(cfg):
     conn = open_db(cfg)
     sync_repo(cfg)
-    with open(REPO_DIR / "watchlist.json") as f:
-        trips = json.load(f).get("trips", [])
+    trips = json.loads((REPO_DIR / "watchlist.json").read_text(encoding="utf-8")).get("trips", [])
 
     max_per_day = cfg.get("max_runs_per_day", 2)
     today = utcnow().date()
@@ -632,6 +637,7 @@ async def run(cfg):
     conn.close()
 
 async def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     cfg = load_cfg()
     if "--dry-run" in sys.argv:
         wl = subprocess.run(["curl", "-sf", WATCHLIST_URL], capture_output=True, text=True, check=True)
@@ -644,7 +650,7 @@ async def main():
         if "--publish" in sys.argv:
             conn = open_db(cfg)
             sync_repo(cfg)
-            trips = json.loads((REPO_DIR / "watchlist.json").read_text()).get("trips", [])
+            trips = json.loads((REPO_DIR / "watchlist.json").read_text(encoding="utf-8")).get("trips", [])
             push_to_github(cfg, generate_html(conn, trips))
             conn.close()
         else:
