@@ -90,7 +90,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
   const prev=priced.slice(-2)[0];
   const delta=latest&&prev&&prev!==latest?latest.price-prev.price:null;
   const fmt=v=>v!=null?'$'+v.toLocaleString():'—';
-  const chg=delta!=null?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'—';
+  const chg=delta?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'<span style="color:var(--muted)">$0</span>';
   document.getElementById('stats-'+i).innerHTML=`
     <div class="stat"><div class="stat-label">Latest</div><div class="stat-value blue">${fmt(latest.price)}</div></div>
     <div class="stat"><div class="stat-label">Change</div><div class="stat-value">${chg}</div></div>
@@ -176,7 +176,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
   const prev=priced.slice(-2)[0];
   const delta=latest&&prev&&prev!==latest?latest.price-prev.price:null;
   const fmt=v=>v!=null?'$'+v.toLocaleString():'—';
-  const chg=delta!=null?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'—';
+  const chg=delta?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'<span style="color:var(--muted)">$0</span>';
   document.getElementById('stats-'+i).innerHTML=`
     <div class="stat"><div class="stat-label">Latest</div><div class="stat-value blue">${fmt(latest.price)}</div></div>
     <div class="stat"><div class="stat-label">Change</div><div class="stat-value">${chg}</div></div>
@@ -262,7 +262,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
   const prev=priced.slice(-2)[0];
   const delta=latest&&prev&&prev!==latest?latest.price-prev.price:null;
   const fmt=v=>v!=null?'$'+v.toLocaleString():'—';
-  const chg=delta!=null?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'—';
+  const chg=delta?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'<span style="color:var(--muted)">$0</span>';
   document.getElementById('stats-'+i).innerHTML=`
     <div class="stat"><div class="stat-label">Latest</div><div class="stat-value blue">${fmt(latest.price)}</div></div>
     <div class="stat"><div class="stat-label">Change</div><div class="stat-value">${chg}</div></div>
@@ -317,7 +317,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
 </script>
 
 
-<p class="updated">Last updated: 2026-09-14 22:56 UTC</p>
+<p class="updated">Last updated: 2026-09-14 22:59 UTC</p>
 
 <script>
 function showTab(id){
