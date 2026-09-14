@@ -50,10 +50,13 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
   <h1>✈ Flight Price Tracker</h1>
   <a class="add-btn" href="flight_manage.html">Manage Trips</a>
 </div>
-<div class="tabs" id="tabs-row"><button class="tab-btn active" onclick="showTab('panel-0')" data-panel="panel-0" data-trip="grr-bon-2026-11-28" id="btn-0">Bonaire Nov 28</button>
+<div class="tabs" id="tabs-row">
+<button class="tab-btn active" onclick="showTab('panel-0')" data-panel="panel-0" data-trip="grr-bon-2026-11-28" id="btn-0">Bonaire Nov 28</button>
 <button class="tab-btn " onclick="showTab('panel-1')" data-panel="panel-1" data-trip="grr-lga-2026-09-29" id="btn-1">NYC Sep 29</button>
-<button class="tab-btn " onclick="showTab('panel-2')" data-panel="panel-2" data-trip="grr-fco-2027-01-15" id="btn-2">Rome January</button></div>
+<button class="tab-btn " onclick="showTab('panel-2')" data-panel="panel-2" data-trip="grr-fco-2027-01-15" id="btn-2">Rome January</button>
+</div>
 <p class="sync-note" id="sync-note" hidden></p>
+
 
 <div class="tab-panel active" id="panel-0" data-trip="grr-bon-2026-11-28">
   <p class="subtitle">GRR → BON  ·  2026-11-28 – 2026-12-05  ·  Main Classic</p>
@@ -71,16 +74,16 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
 </div>
 <script>
 (function(){
-  const DATA = [{"scraped_at": "2026-09-02T08:00:00.000000", "price": 1249.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main Classic", "flights": null}, {"scraped_at": "2026-09-03T08:00:00.000000", "price": 1249.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main Classic", "flights": null}, {"scraped_at": "2026-09-04T14:58:41.893487", "price": 1079.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-06T02:14:44.865910", "price": 1541.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-06T17:23:17.200728", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-07T18:59:51.764699", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-07T21:33:08.698300", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T10:00:49.894981", "price": 1123.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T13:56:33.915848", "price": 1293.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": null}, {"scraped_at": "2026-09-09T10:01:18.705921", "price": 1409.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-10T01:01:20.147179", "price": 1409.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-10T10:01:22.681216", "price": 1541.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}];
-  const i = 0;
-  const prices = DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
-  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  if (!prices.length) {
-    document.getElementById('tbody-'+i).innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ On the watchlist — waiting for the first price check (runs twice a day).</td></tr>';
+  const DATA=[{"scraped_at": "2026-09-02T08:00:00", "price": 1249.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main Classic", "flights": null}, {"scraped_at": "2026-09-03T08:00:00", "price": 1249.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main Classic", "flights": null}, {"scraped_at": "2026-09-04T14:58:41.893487", "price": 1079.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-06T02:14:44.865910", "price": 1541.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-06T17:23:17.200728", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-07T18:59:51.764699", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-07T21:33:08.698300", "price": 1425.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T10:00:49.894981", "price": 1123.0, "airline": "Delta", "stops": null, "depart_time": "6:00 am", "arrive_time": "2:51 pm", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T13:56:33.915848", "price": 1293.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": null}, {"scraped_at": "2026-09-09T10:01:18.705921", "price": 1409.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-10T01:01:20.147179", "price": 1409.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-10T10:01:22.681216", "price": 1541.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-11T01:01:14", "price": 1541.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-11T10:01:09", "price": 1478.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-12T01:01:22", "price": 1478.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-12T10:01:17", "price": 1409.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-13T01:01:05", "price": 1409.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-13T10:01:26", "price": 1409.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-14T01:01:11", "price": 1343.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-14T10:01:19", "price": 1303.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}, {"scraped_at": "2026-09-14T22:55:59.429311", "price": 1303.0, "airline": "Delta", "stops": "1", "depart_time": "06:00", "arrive_time": "14:51", "notes": "Main Classic", "flights": "DL2453 / DL1765"}];
+  const i=0;
+  const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const prices=DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
+  if(!prices.length){
+    document.getElementById('tbody-'+i).innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ Waiting for first price check.</td></tr>';
     document.getElementById('chart-'+i).parentElement.style.display='none';
     return;
   }
-  const minP=Math.min(...prices), maxP=Math.max(...prices);
+  const minP=Math.min(...prices),maxP=Math.max(...prices);
   const avgP=prices.reduce((a,b)=>a+b,0)/prices.length;
   const priced=DATA.filter(d=>d.price);
   const latest=priced[priced.length-1];
@@ -95,7 +98,12 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
     <div class="stat"><div class="stat-label">Highest seen</div><div class="stat-value red">${fmt(maxP)}</div></div>
     <div class="stat"><div class="stat-label">Avg</div><div class="stat-value">${avgP!=null?'$'+Math.round(avgP).toLocaleString():'—'}</div></div>
   `;
-  const labels=priced.map(d=>{const dt=new Date(d.scraped_at+'Z');const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';return date+' '+(h%12||12)+':'+m+ampm;});
+  const labels=priced.map(d=>{
+    const dt=new Date(d.scraped_at+'Z');
+    const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});
+    const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';
+    return date+' '+(h%12||12)+':'+m+ampm;
+  });
   const vals=priced.map(d=>d.price);
   const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
   const gc=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
@@ -108,7 +116,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
       borderWidth:2.5,pointRadius:5,tension:.3,fill:true,
       pointBackgroundColor:vals.map(v=>v===minP?'#16a34a':v===maxP?'#dc2626':'#0d6efd'),
     }]},
-    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y}`}}},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.parsed.y}`}}},
       scales:{
         x:{grid:{color:gc},ticks:{color:tc,maxTicksLimit:10}},
         y:{grid:{color:gc},ticks:{color:tc,callback:v=>'$'+v},suggestedMin:minP*.92,suggestedMax:maxP*1.08}
@@ -132,7 +140,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
       <td>${badge}</td>
     </tr>`;
   }).join('');
-  const hc0=document.getElementById('hist-count-'+i);if(hc0)hc0.textContent=DATA.length;
+  const hc=document.getElementById('hist-count-'+i);if(hc)hc.textContent=DATA.length;
 })();
 </script>
 
@@ -152,16 +160,16 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
 </div>
 <script>
 (function(){
-  const DATA = [{"scraped_at": "2026-09-07T21:49:27.249185", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T01:00:52.305883", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T10:02:07.453728", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-09T10:02:37.642105", "price": 717.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-10T01:02:33.093215", "price": 717.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-10T10:02:49.972994", "price": 717.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}];
-  const i = 1;
-  const prices = DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
-  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  if (!prices.length) {
-    document.getElementById('tbody-'+i).innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ On the watchlist — waiting for the first price check (runs twice a day).</td></tr>';
+  const DATA=[{"scraped_at": "2026-09-07T21:49:27.249185", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T01:00:52.305883", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-08T10:02:07.453728", "price": 687.0, "airline": "Delta", "stops": "Nonstop", "depart_time": "6:00 am", "arrive_time": "7:58 am", "notes": "Main", "flights": null}, {"scraped_at": "2026-09-09T10:02:37.642105", "price": 717.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-10T01:02:33.093215", "price": 717.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-10T10:02:49.972994", "price": 717.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-11T01:02:14", "price": 717.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-11T10:02:09", "price": 717.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-12T01:02:22", "price": 747.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-12T10:02:17", "price": 747.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-13T01:02:05", "price": 747.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-13T10:02:26", "price": 787.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-14T01:02:11", "price": 787.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-14T10:02:19", "price": 787.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}, {"scraped_at": "2026-09-14T22:56:02.835113", "price": 787.0, "airline": "Delta", "stops": "0", "depart_time": "06:00", "arrive_time": "07:58", "notes": "Main Classic", "flights": "DL5760"}];
+  const i=1;
+  const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const prices=DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
+  if(!prices.length){
+    document.getElementById('tbody-'+i).innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ Waiting for first price check.</td></tr>';
     document.getElementById('chart-'+i).parentElement.style.display='none';
     return;
   }
-  const minP=Math.min(...prices), maxP=Math.max(...prices);
+  const minP=Math.min(...prices),maxP=Math.max(...prices);
   const avgP=prices.reduce((a,b)=>a+b,0)/prices.length;
   const priced=DATA.filter(d=>d.price);
   const latest=priced[priced.length-1];
@@ -176,7 +184,12 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
     <div class="stat"><div class="stat-label">Highest seen</div><div class="stat-value red">${fmt(maxP)}</div></div>
     <div class="stat"><div class="stat-label">Avg</div><div class="stat-value">${avgP!=null?'$'+Math.round(avgP).toLocaleString():'—'}</div></div>
   `;
-  const labels=priced.map(d=>{const dt=new Date(d.scraped_at+'Z');const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';return date+' '+(h%12||12)+':'+m+ampm;});
+  const labels=priced.map(d=>{
+    const dt=new Date(d.scraped_at+'Z');
+    const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});
+    const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';
+    return date+' '+(h%12||12)+':'+m+ampm;
+  });
   const vals=priced.map(d=>d.price);
   const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
   const gc=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
@@ -189,7 +202,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
       borderWidth:2.5,pointRadius:5,tension:.3,fill:true,
       pointBackgroundColor:vals.map(v=>v===minP?'#16a34a':v===maxP?'#dc2626':'#0d6efd'),
     }]},
-    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y}`}}},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.parsed.y}`}}},
       scales:{
         x:{grid:{color:gc},ticks:{color:tc,maxTicksLimit:10}},
         y:{grid:{color:gc},ticks:{color:tc,callback:v=>'$'+v},suggestedMin:minP*.92,suggestedMax:maxP*1.08}
@@ -213,7 +226,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
       <td>${badge}</td>
     </tr>`;
   }).join('');
-  const hc1=document.getElementById('hist-count-'+i);if(hc1)hc1.textContent=DATA.length;
+  const hc=document.getElementById('hist-count-'+i);if(hc)hc.textContent=DATA.length;
 })();
 </script>
 
@@ -233,16 +246,16 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
 </div>
 <script>
 (function(){
-  const DATA = [{"scraped_at": "2026-09-08T14:51:40.090542", "price": 1002.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-08T16:25:52.794024", "price": 1002.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-09T10:03:50.031452", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-10T01:03:37.607277", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-10T10:04:00.128348", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}];
-  const i = 2;
-  const prices = DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
-  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  if (!prices.length) {
-    document.getElementById('tbody-'+i).innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ On the watchlist — waiting for the first price check (runs twice a day).</td></tr>';
+  const DATA=[{"scraped_at": "2026-09-08T14:51:40.090542", "price": 1002.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-08T16:25:52.794024", "price": 1002.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-09T10:03:50.031452", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-10T01:03:37.607277", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-10T10:04:00.128348", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-11T01:04:14", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-11T10:04:09", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-12T01:04:22", "price": 889.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-12T10:04:17", "price": 889.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-13T01:04:05", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-13T10:04:26", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-14T01:04:11", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-14T10:04:19", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}, {"scraped_at": "2026-09-14T22:56:04.675773", "price": 852.0, "airline": "Delta", "stops": "1", "depart_time": "13:00", "arrive_time": "11:20", "notes": "Main Classic", "flights": "DL2547 / DL66"}];
+  const i=2;
+  const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const prices=DATA.map(d=>d.price).filter(p=>p!=null&&p>0);
+  if(!prices.length){
+    document.getElementById('tbody-'+i).innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">⏳ Waiting for first price check.</td></tr>';
     document.getElementById('chart-'+i).parentElement.style.display='none';
     return;
   }
-  const minP=Math.min(...prices), maxP=Math.max(...prices);
+  const minP=Math.min(...prices),maxP=Math.max(...prices);
   const avgP=prices.reduce((a,b)=>a+b,0)/prices.length;
   const priced=DATA.filter(d=>d.price);
   const latest=priced[priced.length-1];
@@ -257,7 +270,12 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
     <div class="stat"><div class="stat-label">Highest seen</div><div class="stat-value red">${fmt(maxP)}</div></div>
     <div class="stat"><div class="stat-label">Avg</div><div class="stat-value">${avgP!=null?'$'+Math.round(avgP).toLocaleString():'—'}</div></div>
   `;
-  const labels=priced.map(d=>{const dt=new Date(d.scraped_at+'Z');const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';return date+' '+(h%12||12)+':'+m+ampm;});
+  const labels=priced.map(d=>{
+    const dt=new Date(d.scraped_at+'Z');
+    const date=DAYS[dt.getDay()]+' '+dt.toLocaleDateString('en-US',{month:'numeric',day:'numeric'});
+    const h=dt.getHours(),m=String(dt.getMinutes()).padStart(2,'0'),ampm=h>=12?'pm':'am';
+    return date+' '+(h%12||12)+':'+m+ampm;
+  });
   const vals=priced.map(d=>d.price);
   const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
   const gc=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
@@ -270,7 +288,7 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
       borderWidth:2.5,pointRadius:5,tension:.3,fill:true,
       pointBackgroundColor:vals.map(v=>v===minP?'#16a34a':v===maxP?'#dc2626':'#0d6efd'),
     }]},
-    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y}`}}},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.parsed.y}`}}},
       scales:{
         x:{grid:{color:gc},ticks:{color:tc,maxTicksLimit:10}},
         y:{grid:{color:gc},ticks:{color:tc,callback:v=>'$'+v},suggestedMin:minP*.92,suggestedMax:maxP*1.08}
@@ -294,22 +312,18 @@ details[open] .history-summary .toggle-icon{transform:rotate(90deg)}
       <td>${badge}</td>
     </tr>`;
   }).join('');
-  const hc2=document.getElementById('hist-count-'+i);if(hc2)hc2.textContent=DATA.length;
+  const hc=document.getElementById('hist-count-'+i);if(hc)hc.textContent=DATA.length;
 })();
 </script>
 
-<p class="updated">Last updated: 2026-09-11 01:00 UTC</p>
+
+<p class="updated">Last updated: 2026-09-14 22:56 UTC</p>
 
 <script>
 function showTab(id){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id===id));
   document.querySelectorAll('[data-panel]').forEach(b=>b.classList.toggle('active',b.dataset.panel===id));
 }
-
-// ── Live sync with watchlist.json ────────────────────────────────────────────
-// This page is regenerated only when the tracker runs.  Between runs the
-// watchlist may have changed (trips added/removed on the manage page), so we
-// fetch the live file and add placeholder tabs / hide removed ones.
 (function(){
   const rendered=new Set(Array.from(document.querySelectorAll('.tab-panel[data-trip]')).map(p=>p.dataset.trip));
   fetch('watchlist.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(wl=>{
@@ -318,11 +332,9 @@ function showTab(id){
     const tabsEl=document.getElementById('tabs-row');
     const updatedEl=document.querySelector('p.updated');
     let added=0,removed=0;
-    // Trips removed since the last run → hide their tab
     document.querySelectorAll('[data-trip]').forEach(el=>{
       if(!live.has(el.dataset.trip)){el.remove();removed++;}
     });
-    // Trips added since the last run → placeholder tab
     wl.trips.forEach(t=>{
       if(rendered.has(t.id)) return;
       const pid='pending-'+t.id;
@@ -340,7 +352,7 @@ function showTab(id){
       if(t.return_flights) bits.push('Back '+t.return_flights);
       const sub=document.createElement('p');sub.className='subtitle';sub.textContent=bits.join('  ·  ');
       const card=document.createElement('div');card.className='empty-card';
-      card.textContent='⏳ Added to the watchlist — the first price will be captured on the next tracker run (runs twice a day).';
+      card.textContent='⏳ Added to the watchlist — first price on the next tracker run.';
       panel.appendChild(sub);panel.appendChild(card);
       updatedEl.insertAdjacentElement('beforebegin',panel);
       added++;
@@ -352,9 +364,8 @@ function showTab(id){
     if(added||removed){
       const n=document.getElementById('sync-note');
       n.hidden=false;
-      n.textContent='Watchlist updated since the last price check: '+(added?added+' new trip(s) pending':'')+(added&&removed?', ':'')+(removed?removed+' removed':'')+'.';
+      n.textContent='Watchlist updated: '+(added?added+' new':'')+(added&&removed?', ':'')+(removed?removed+' removed':'')+'.';
     }
   }).catch(()=>{});
 })();
 </script>
-
