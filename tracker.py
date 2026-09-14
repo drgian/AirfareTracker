@@ -373,7 +373,7 @@ def generate_html(conn, trips):
   const prev=priced.slice(-2)[0];
   const delta=latest&&prev&&prev!==latest?latest.price-prev.price:null;
   const fmt=v=>v!=null?'$'+v.toLocaleString():'—';
-  const chg=delta!=null?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'—';
+  const chg=delta?(delta>0?'<span style="color:var(--red)">▲ $'+Math.abs(delta).toLocaleString()+'</span>':'<span style="color:var(--green)">▼ $'+Math.abs(delta).toLocaleString()+'</span>'):'<span style="color:var(--muted)">$0</span>';
   document.getElementById('stats-'+i).innerHTML=`
     <div class="stat"><div class="stat-label">Latest</div><div class="stat-value blue">${{fmt(latest.price)}}</div></div>
     <div class="stat"><div class="stat-label">Change</div><div class="stat-value">${{chg}}</div></div>
@@ -641,7 +641,14 @@ async def main():
         return
     tunnel = open_tunnel(cfg)
     try:
-        await run(cfg)
+        if "--publish" in sys.argv:
+            conn = open_db(cfg)
+            sync_repo(cfg)
+            trips = json.loads((REPO_DIR / "watchlist.json").read_text()).get("trips", [])
+            push_to_github(cfg, generate_html(conn, trips))
+            conn.close()
+        else:
+            await run(cfg)
     finally:
         if tunnel:
             tunnel.terminate()
