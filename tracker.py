@@ -101,7 +101,10 @@ def fire_alerts(cfg, trip, new_price, prev_price):
     origin    = trip["origin"]
     dest      = trip["destination"]
     dates     = f"{trip['travel_date']} – {trip.get('return_date','')}"
-    threshold = cfg.get("alert_below")
+    # config.json's alert_below predates multi-trip support and belongs to its own route
+    threshold = trip.get("alert_below")
+    if threshold is None and (origin, dest) == (cfg.get("origin"), cfg.get("destination")):
+        threshold = cfg.get("alert_below")
 
     if cfg.get("alert_on_change") and prev_price and new_price != prev_price:
         delta = new_price - prev_price
