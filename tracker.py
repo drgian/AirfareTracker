@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Flight price tracker — Delta.com → GitHub Pages dashboard."""
 
-import asyncio, json, re, secrets, smtplib, subprocess, sys, os
+import asyncio, json, re, smtplib, socket, subprocess, sys, os, time
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -11,28 +11,13 @@ import psycopg
 from psycopg.rows import dict_row
 from playwright.async_api import async_playwright
 
-# playwright-stealth 2.x exposes Stealth(); 1.x exposed stealth_async()
-try:
-    from playwright_stealth import Stealth
-    async def apply_stealth(page):
-        await Stealth().apply_stealth_async(page)
-    HAS_STEALTH = True
-except ImportError:
-    try:
-        from playwright_stealth import stealth_async as apply_stealth
-        HAS_STEALTH = True
-    except ImportError:
-        HAS_STEALTH = False
-        print("Warning: playwright-stealth not installed; WAF bypass disabled")
-
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-BASE_DIR  = Path(__file__).parent
+BASE_DIR  = Path(__file__).resolve().parent
 CFG_FILE  = BASE_DIR / "config.json"
-REPO_DIR  = Path.home() / "airfaretracker-repo"
-PROFILE   = str(Path.home() / ".config" / "delta-tracker-profile")
+REPO_DIR  = BASE_DIR / "site-repo"
 DASHBOARD = "https://drgian.github.io/AirfareTracker/flight_tracker.html"
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -53,23 +38,36 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS price_history (
     notes       TEXT,
     flights     TEXT
 );
-CREATE INDEX IF NOT EXISTS price_history_trip_time ON price_history (trip_id, scraped_at);"""
+CREATE INDEX IF NOT EXISTS price_history_trip_time ON price_history (trip_id, scraped_at);
+-- synthetic rows are gap fill-ins: shown on the dashboard, ignored by alerts and the daily limit
+ALTER TABLE price_history ADD COLUMN IF NOT EXISTS synthetic BOOLEAN NOT NULL DEFAULT FALSE;"""
+
+def open_tunnel(cfg):
+    """When the scraper runs off the AWS box, reach its Postgres through an SSH tunnel."""
+    t = cfg.get("ssh_tunnel")
+    if not t:
+        return None
+    port = t.get("local_port", 55432)
+    proc = subprocess.Popen(
+        ["ssh", "-i", t["key"], "-N", "-o", "ExitOnForwardFailure=yes",
+         "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30",
+         "-L", f"{port}:localhost:5432", f"{t['user']}@{t['host']}"])
+    for _ in range(40):
+        if proc.poll() is not None:
+            sys.exit("SSH tunnel to the database failed to start")
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+            return proc
+        except OSError:
+            time.sleep(0.5)
+    proc.terminate()
+    sys.exit("SSH tunnel to the database timed out")
 
 def open_db(cfg):
     conn = psycopg.connect(cfg.get("database_url", "dbname=flighttracker"),
                            row_factory=dict_row, autocommit=True)
     conn.execute(SCHEMA)
     return conn
-
-# ── pick_best ─────────────────────────────────────────────────────────────────
-def pick_best(results):
-    if not results:
-        return None
-    classic = [r for r in results if r.get("fare_class") == "Main Classic"]
-    pool = classic if classic else ([r for r in results if r.get("fare_class") != "First"] or results)
-    best = min(pool, key=lambda r: r["price"])
-    best.setdefault("airline", "Delta")
-    return best
 
 # ── Email (SMTP) ──────────────────────────────────────────────────────────────
 def send_email(cfg, to_list, subject, body_text):
@@ -130,177 +128,174 @@ def fire_alerts(cfg, trip, new_price, prev_price):
         send_email(cfg, emails, subj, body)
 
 # ── Scraper ───────────────────────────────────────────────────────────────────
-async def scrape_trip(cfg, trip):
-    origin      = trip["origin"]
-    dest        = trip["destination"]
-    travel_date = trip["travel_date"]
-    return_date = trip.get("return_date", "")
-    outbound    = trip.get("outbound_flights", "")
+# Delta's bot protection rejects browsers launched by automation tools, so we start an
+# ordinary Chrome and attach to it over the DevTools protocol instead.
+CHROME_PATHS = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    "/usr/bin/google-chrome",
+]
+CDP_PORT = 9333
+CABIN_TO_BRAND = {"main_basic": "BMAIN", "main_classic": "CMAIN", "main_extra": "EMAIN",
+                  "comfort": "CDCP", "comfort_classic": "CDCP", "first": "CFIRST"}
+BRAND_NAMES = {"BMAIN": "Main Basic", "CMAIN": "Main Classic", "EMAIN": "Main Extra",
+               "CDCP": "Comfort Classic", "EDCP": "Comfort Extra",
+               "CFIRST": "First Classic", "EFIRST": "First Extra"}
 
-    print(f"  Scraping {origin}→{dest} ({travel_date})...")
+def chrome_path(cfg):
+    for p in [cfg.get("chrome_path")] + CHROME_PATHS:
+        if p and Path(p).exists():
+            return p
+    sys.exit("Google Chrome not found; set chrome_path in config.json")
 
-    # Delta blocks datacenter IPs, so traffic must go through a residential proxy.
-    # IPRoyal reads targeting from the password; a fresh session id = a new sticky US IP per trip.
-    proxy = dict(cfg["proxy"]) if cfg.get("proxy") else None
-    if proxy and "_session-" not in proxy["password"]:
-        proxy["password"] += f"_country-us_session-{secrets.token_hex(4)}_lifetime-30m"
-
-    async with async_playwright() as p:
-        ctx = await p.chromium.launch_persistent_context(
-            PROFILE,
-            headless=True,
-            proxy=proxy,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-            ],
-            viewport={"width": 1280, "height": 900},
-        )
-        # Proxy is billed per GB; images/fonts/media aren't needed to read prices
-        await ctx.route("**/*", lambda route: route.abort()
-                        if route.request.resource_type in ("image", "font", "media")
-                        else route.continue_())
-        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-        if HAS_STEALTH:
-            await apply_stealth(page)
-
-        result = None
-        try:
-            await page.goto(
-                "https://www.delta.com/us/en/flight-search/round-trip",
-                timeout=90000, wait_until="domcontentloaded",
-            )
-            await page.wait_for_timeout(4000)
-
-            try:
-                await page.wait_for_selector("#fromAirportName", timeout=30000)
-            except Exception:
-                shot = BASE_DIR / f"debug_{trip['id']}.png"
-                await page.screenshot(path=str(shot), full_page=True)
-                title = await page.title()
-                body  = (await page.inner_text("body"))[:400].replace("\n", " | ")
-                print(f"  Search form never appeared. Title: {title!r}")
-                print(f"  Page text: {body}")
-                print(f"  Screenshot: {shot}")
-                raise
-
-            # Origin
-            await page.click("#fromAirportName")
-            await page.fill("#fromAirportName", origin)
-            await page.wait_for_timeout(1500)
-            try:
-                await page.click(f"[data-code='{origin}']", timeout=4000)
-            except Exception:
-                await page.keyboard.press("ArrowDown")
-                await page.keyboard.press("Enter")
-            await page.wait_for_timeout(500)
-
-            # Destination
-            await page.click("#toAirportName")
-            await page.fill("#toAirportName", dest)
-            await page.wait_for_timeout(1500)
-            try:
-                await page.click(f"[data-code='{dest}']", timeout=4000)
-            except Exception:
-                await page.keyboard.press("ArrowDown")
-                await page.keyboard.press("Enter")
-            await page.wait_for_timeout(500)
-
-            # Departure date
-            dep_str = datetime.strptime(travel_date, "%Y-%m-%d").strftime("%m/%d/%Y")
-            await page.fill("#departureDate", dep_str)
-            await page.keyboard.press("Tab")
-            await page.wait_for_timeout(400)
-
-            # Return date
-            if return_date:
-                ret_str = datetime.strptime(return_date, "%Y-%m-%d").strftime("%m/%d/%Y")
-                await page.fill("#returnDate", ret_str)
-                await page.keyboard.press("Tab")
-                await page.wait_for_timeout(400)
-
-            # Search
-            await page.click("#btn-search")
-            print("  Waiting for results...")
-            await page.wait_for_timeout(20000)
-
-            text = await page.inner_text("body")
-
-            price      = None
-            fare_class = "Main"
-            stops      = None
-            depart_t   = None
-            arrive_t   = None
-            flights    = None
-
-            # Price extraction
-            m = re.search(r'From[\s\S]{0,20}?\$([0-9,]+)[\s\S]{0,30}?Round Trip', text)
-            if m:
-                price = float(m.group(1).replace(",", ""))
-            if not price:
-                m2 = re.search(r'\$([0-9,]+)\s*/\s*person', text, re.IGNORECASE)
-                if m2:
-                    price = float(m2.group(1).replace(",", ""))
-
-            # Fare class
-            if "Main Classic" in text:
-                fare_class = "Main Classic"
-            elif "Main Select" in text:
-                fare_class = "Main Select"
-
-            # Stops
-            if re.search(r'nonstop', text, re.IGNORECASE):
-                stops = "0"
-            elif re.search(r'1\s*stop', text, re.IGNORECASE):
-                stops = "1"
-
-            # Flight numbers — use watchlist outbound if set
-            if outbound:
-                flights = outbound
-                for fn in re.findall(r'DL\d{3,4}', outbound):
-                    idx = text.find(fn)
-                    if idx >= 0:
-                        snip = text[max(0, idx - 200):idx + 300]
-                        times = re.findall(r'\b(\d{1,2}:\d{2})\b', snip)
-                        if len(times) >= 2:
-                            depart_t = times[0]
-                            arrive_t = times[1]
-                            break
-            else:
-                fl = re.findall(r'\bDL\s*(\d{3,4})\b', text)
-                if fl:
-                    seen = list(dict.fromkeys(fl))[:2]
-                    flights = " / ".join(f"DL{n}" for n in seen)
-
-            # Time fallback
-            if not depart_t:
-                times = re.findall(r'\b(\d{1,2}:\d{2})\b', text)
-                if len(times) >= 2:
-                    depart_t = times[0]
-                    arrive_t = times[1]
-
-            if price:
-                result = {
+def parse_offers(data, trip):
+    """Cheapest fare in the trip's cabin, limited to its pinned outbound flights if any."""
+    brand  = CABIN_TO_BRAND.get(trip.get("cabin_class", "main_classic"), "CMAIN")
+    pinned = re.findall(r"DL\s*(\d+)", trip.get("outbound_flights", ""))
+    best = None
+    for offer_set in data["data"]["gqlSearchOffers"]["gqlOffersSets"]:
+        t = offer_set["trips"][0]
+        nums = [str(s["marketingCarrier"]["carrierNum"]) for s in t["flightSegment"]]
+        if pinned and nums != pinned:
+            continue
+        for offer in offer_set["offers"]:
+            props = offer["additionalOfferProperties"]
+            if props.get("dominantSegmentBrandId") != brand or props.get("soldOut"):
+                continue
+            amt = re.search(r'"roundedCurrencyAmt": (\d+)', json.dumps(offer))
+            if not amt:
+                continue
+            price = float(amt.group(1))
+            if best is None or price < best["price"]:
+                best = {
                     "price":       price,
                     "airline":     "Delta",
-                    "fare_class":  fare_class,
-                    "stops":       stops,
-                    "depart_time": depart_t,
-                    "arrive_time": arrive_t,
-                    "flights":     flights,
+                    "fare_class":  BRAND_NAMES.get(brand, brand),
+                    "stops":       str(t.get("stopCnt", "")),
+                    "depart_time": t["scheduledDepartureLocalTs"][11:16],
+                    "arrive_time": t["scheduledArrivalLocalTs"][11:16],
+                    "flights":     " / ".join(f"DL{n}" for n in nums),
                 }
-                print(f"  → ${price:,.0f} ({fare_class})")
-            else:
-                print("  No price found.")
-                print(f"  Page text (first 400 chars):\n{text[:400]}")
+    return best
 
-        except Exception as e:
-            print(f"  Scrape error: {e}")
-        finally:
-            await ctx.close()
+async def pick_airport(page, which, code):
+    btn = page.locator(f"[id$='-{which}-button'] >> visible=true").first
+    if f", {code}," in (await btn.get_attribute("aria-label") or ""):
+        return
+    await btn.click()
+    await page.wait_for_timeout(1000)
+    await page.keyboard.type(code, delay=120)
+    option = page.locator("li[role=option] >> visible=true").filter(has_text=re.compile(rf"^\s*{code}\b"))
+    await option.first.click()
+    await page.wait_for_timeout(800)
 
-    return result
+async def pick_dates(page, dates):
+    await page.locator("[id^='date-picker-trigger'] >> visible=true").first.click()
+    await page.wait_for_timeout(1200)
+    clear = page.locator("[role=dialog] button:has-text('Clear') >> visible=true")
+    if await clear.count():
+        await clear.first.click()
+        await page.wait_for_timeout(500)
+    prev = page.locator("[role=dialog] button[aria-label^='Previous month']:not([disabled])")
+    for _ in range(14):
+        if not await prev.count():
+            break
+        await prev.first.click()
+        await page.wait_for_timeout(300)
+    for d in dates:
+        cell = page.locator(f"[role=dialog] button[aria-label^='{d:%B} {d.day}, {d.year}'] >> visible=true")
+        for _ in range(14):
+            if await cell.count():
+                break
+            await page.locator("[role=dialog] button[aria-label^='Next month']:not([disabled])").first.click()
+            await page.wait_for_timeout(400)
+        await cell.first.click()
+        await page.wait_for_timeout(600)
+    await page.locator("[role=dialog] button:has-text('Done') >> visible=true").first.click()
+    await page.wait_for_timeout(800)
+
+async def search_trip(page, trip):
+    print(f"  Searching {trip['origin']}→{trip['destination']} "
+          f"({trip['travel_date']} – {trip.get('return_date', '')})...")
+    offers = []
+    async def on_response(resp):
+        if "rm-offer-gql" in resp.url:
+            try:
+                body = await resp.json()
+            except Exception:
+                return
+            if (body.get("data") or {}).get("gqlSearchOffers"):
+                offers.append(body)
+    page.on("response", on_response)
+    try:
+        await page.goto("https://www.delta.com/", timeout=90000, wait_until="domcontentloaded")
+        await page.wait_for_timeout(5000)
+        cookie = page.locator("#onetrust-accept-btn-handler >> visible=true")
+        if await cookie.count():
+            await cookie.first.click()
+        await pick_airport(page, "origin", trip["origin"])
+        await pick_airport(page, "destination", trip["destination"])
+        dates = [datetime.strptime(trip["travel_date"], "%Y-%m-%d")]
+        if trip.get("return_date"):
+            dates.append(datetime.strptime(trip["return_date"], "%Y-%m-%d"))
+        await pick_dates(page, dates)
+        await page.locator("#findFilghtsCta >> visible=true").first.click()
+        for _ in range(60):
+            if offers or await page.title() == "Access Denied":
+                break
+            await page.wait_for_timeout(1000)
+        if not offers:
+            print(f"  No fares returned (page: {await page.title()!r})")
+            await page.screenshot(path=str(BASE_DIR / f"debug_{trip['id']}.png"))
+            return None
+        result = parse_offers(offers[0], trip)
+        if result:
+            print(f"  → ${result['price']:,.0f} {result['fare_class']}  {result['flights']}  "
+                  f"{result['depart_time']}→{result['arrive_time']}")
+        else:
+            print("  Fares returned, but none in the requested cabin/flights.")
+        return result
+    except Exception as e:
+        print(f"  Scrape error: {str(e).splitlines()[0]}")
+        await page.screenshot(path=str(BASE_DIR / f"debug_{trip['id']}.png"))
+        return None
+    finally:
+        page.remove_listener("response", on_response)
+
+async def scrape_trips(cfg, trips):
+    """Search every trip in one Chrome session; returns {trip_id: result or None}."""
+    chrome = subprocess.Popen(
+        [chrome_path(cfg), f"--remote-debugging-port={CDP_PORT}",
+         f"--user-data-dir={BASE_DIR / 'chrome-profile'}",
+         "--no-first-run", "--no-default-browser-check", "--window-size=1280,900", "about:blank"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    results = {}
+    try:
+        async with async_playwright() as p:
+            browser = None
+            for _ in range(30):
+                try:
+                    browser = await p.chromium.connect_over_cdp(f"http://127.0.0.1:{CDP_PORT}")
+                    break
+                except Exception:
+                    await asyncio.sleep(0.5)
+            if browser is None:
+                sys.exit("Could not attach to Chrome")
+            ctx  = browser.contexts[0]
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            for trip in trips:
+                print(f"\n── {trip.get('label', trip['id'])} ──")
+                for attempt in range(2):
+                    results[trip["id"]] = await search_trip(page, trip)
+                    if results[trip["id"]]:
+                        break
+                    if attempt == 0:
+                        print("  Retrying...")
+            await browser.close()
+    finally:
+        chrome.terminate()
+    return results
 
 # ── HTML generation ───────────────────────────────────────────────────────────
 def generate_html(conn, trips):
@@ -579,71 +574,74 @@ def push_to_github(cfg, html_content):
     print("  Dashboard pushed.")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
-async def main():
-    cfg = load_cfg()
+WATCHLIST_URL = "https://raw.githubusercontent.com/drgian/AirfareTracker/gh-pages/watchlist.json"
+
+async def run(cfg):
     conn = open_db(cfg)
     sync_repo(cfg)
-
     with open(REPO_DIR / "watchlist.json") as f:
         trips = json.load(f).get("trips", [])
 
     max_per_day = cfg.get("max_runs_per_day", 2)
-    today       = utcnow().date()
-    any_scraped = False
-
+    today = utcnow().date()
+    due = []
     for trip in trips:
-        trip_id = trip["id"]
-        print(f"\n── {trip.get('label', trip_id)} ──")
-
-        runs_today = conn.execute(
-            "SELECT COUNT(*) AS n FROM price_history "
-            "WHERE trip_id=%s AND scraped_at::date=%s AND price_usd IS NOT NULL",
-            (trip_id, today),
+        n = conn.execute(
+            "SELECT COUNT(*) AS n FROM price_history WHERE trip_id=%s AND scraped_at::date=%s "
+            "AND price_usd IS NOT NULL AND NOT synthetic",
+            (trip["id"], today),
         ).fetchone()["n"]
+        if n >= max_per_day:
+            print(f"{trip.get('label', trip['id'])}: already {n} price(s) today, skipping.")
+        else:
+            due.append(trip)
 
-        if runs_today >= max_per_day:
-            print(f"  Already {runs_today} price(s) today — skipping.")
-            continue
+    results = await scrape_trips(cfg, due) if due else {}
 
+    any_scraped = False
+    for trip in due:
         prev = conn.execute(
-            "SELECT price_usd FROM price_history "
-            "WHERE trip_id=%s AND price_usd IS NOT NULL ORDER BY scraped_at DESC LIMIT 1",
-            (trip_id,),
+            "SELECT price_usd FROM price_history WHERE trip_id=%s AND price_usd IS NOT NULL "
+            "AND NOT synthetic ORDER BY scraped_at DESC LIMIT 1",
+            (trip["id"],),
         ).fetchone()
-        prev_price = prev["price_usd"] if prev else None
-
-        # Some proxy IPs are datacenter-flagged and get blocked; each attempt draws a new IP
-        for attempt in range(3):
-            result = await scrape_trip(cfg, trip)
-            if result:
-                break
-            if attempt < 2:
-                print("  Retrying on a new IP...")
-
+        result = results.get(trip["id"])
         now = utcnow()
         if result:
             conn.execute(
                 "INSERT INTO price_history "
                 "(trip_id, scraped_at, price_usd, airline, stops, depart_time, arrive_time, notes, flights) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (trip_id, now, result["price"], result.get("airline"),
-                 result.get("stops"), result.get("depart_time"), result.get("arrive_time"),
-                 result.get("fare_class", "Main"), result.get("flights")),
+                (trip["id"], now, result["price"], result["airline"], result["stops"],
+                 result["depart_time"], result["arrive_time"], result["fare_class"], result["flights"]),
             )
             any_scraped = True
-            fire_alerts(cfg, trip, result["price"], prev_price)
+            fire_alerts(cfg, trip, result["price"], prev["price_usd"] if prev else None)
         else:
             conn.execute(
                 "INSERT INTO price_history (trip_id, scraped_at, notes) VALUES (%s,%s,'scrape failed')",
-                (trip_id, now),
+                (trip["id"], now),
             )
 
     if any_scraped:
         print("\n── Updating dashboard ──")
-        html = generate_html(conn, trips)
-        push_to_github(cfg, html)
-
+        push_to_github(cfg, generate_html(conn, trips))
     conn.close()
+
+async def main():
+    cfg = load_cfg()
+    if "--dry-run" in sys.argv:
+        wl = subprocess.run(["curl", "-sf", WATCHLIST_URL], capture_output=True, text=True, check=True)
+        trips = json.loads(wl.stdout).get("trips", [])
+        await scrape_trips(cfg, trips)
+        print("\nDry run: nothing saved, emailed or published.")
+        return
+    tunnel = open_tunnel(cfg)
+    try:
+        await run(cfg)
+    finally:
+        if tunnel:
+            tunnel.terminate()
 
 if __name__ == "__main__":
     asyncio.run(main())
