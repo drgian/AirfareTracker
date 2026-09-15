@@ -19,6 +19,7 @@ BASE_DIR  = Path(__file__).resolve().parent
 CFG_FILE  = BASE_DIR / "config.json"
 REPO_DIR  = BASE_DIR / "site-repo"
 DASHBOARD = "https://flightfare.io/flight_tracker.html"
+APP_URL   = "https://flightfare.io/app/"
 # Task Scheduler may not see PATH changes made by installers until a reboot
 GIT = shutil.which("git") or r"C:\Program Files\Git\cmd\git.exe"
 
@@ -94,43 +95,43 @@ def send_email(cfg, to_list, subject, body_text):
     except Exception as e:
         print(f"  Email failed: {e}")
 
-def fire_alerts(cfg, trip, new_price, prev_price):
-    emails = cfg.get("alert_emails", [])
-    if isinstance(emails, str):
-        emails = [emails]
-    if not emails:
-        return
-    origin    = trip["origin"]
-    dest      = trip["destination"]
-    dates     = f"{trip['travel_date']} – {trip.get('return_date','')}"
-    # config.json's alert_below predates multi-trip support and belongs to its own route
-    threshold = trip.get("alert_below")
-    if threshold is None and (origin, dest) == (cfg.get("origin"), cfg.get("destination")):
-        threshold = cfg.get("alert_below")
+def alert_recipients(cfg, conn, trip, legacy):
+    """{email: (alert threshold or None, dashboard link)} for everyone following this route."""
+    out = {}
+    if legacy:
+        emails = cfg.get("alert_emails", [])
+        # config.json's alert_below predates multi-trip support and belongs to its own route
+        own = (trip["origin"], trip["destination"]) == (cfg.get("origin"), cfg.get("destination"))
+        for e in ([emails] if isinstance(emails, str) else emails):
+            out[e.lower()] = (cfg.get("alert_below") if own else None, DASHBOARD)
+    for r in conn.execute("SELECT u.email, t.alert_below FROM user_trips t JOIN users u ON u.id = t.user_id "
+                          "WHERE t.route_id=%s", (trip["id"],)):
+        old = out.get(r["email"], (None, APP_URL))[0]
+        out[r["email"]] = (r["alert_below"] if r["alert_below"] is not None else old, APP_URL)
+    return out
 
-    if cfg.get("alert_on_change") and prev_price and new_price != prev_price:
-        delta = new_price - prev_price
-        sign  = "+" if delta > 0 else ""
-        arrow = "↑" if delta > 0 else "↓"
-        subj  = f"Flight Price {arrow} {origin}→{dest}: now ${new_price:,.0f} ({sign}${delta:,.0f})"
-        body  = "\n".join([
-            f"Route: {origin} → {dest}  |  {dates}", "",
-            f"Previous price: ${prev_price:,.0f}",
-            f"Current price:  ${new_price:,.0f}",
-            f"Change:         {sign}${delta:,.0f}", "",
-            f"Dashboard: {DASHBOARD}"
-        ])
-        send_email(cfg, emails, subj, body)
-
-    if threshold and new_price < threshold:
-        subj = f"Price Alert: {origin}→{dest} now ${new_price:,.0f} (below ${threshold:,.0f})"
-        body = "\n".join([
-            f"Route: {origin} → {dest}  |  {dates}", "",
-            f"Current price: ${new_price:,.0f}",
-            f"Alert threshold: ${threshold:,.0f}", "",
-            f"Dashboard: {DASHBOARD}"
-        ])
-        send_email(cfg, emails, subj, body)
+def fire_alerts(cfg, recipients, trip, new_price, prev_price):
+    # One email per person so followers of a route never see each other's addresses
+    origin, dest = trip["origin"], trip["destination"]
+    route = f"{origin} → {dest}  |  {trip['travel_date']} – {trip.get('return_date', '')}"
+    for email, (threshold, link) in recipients.items():
+        if prev_price and new_price != prev_price:
+            delta = new_price - prev_price
+            sign, arrow = ("+", "↑") if delta > 0 else ("", "↓")
+            send_email(cfg, [email],
+                       f"Flight Price {arrow} {origin}→{dest}: now ${new_price:,.0f} ({sign}${delta:,.0f})",
+                       "\n".join([f"Route: {route}", "",
+                                  f"Previous price: ${prev_price:,.0f}",
+                                  f"Current price:  ${new_price:,.0f}",
+                                  f"Change:         {sign}${delta:,.0f}", "",
+                                  f"Dashboard: {link}"]))
+        if threshold and new_price < threshold:
+            send_email(cfg, [email],
+                       f"Price Alert: {origin}→{dest} now ${new_price:,.0f} (below ${threshold:,.0f})",
+                       "\n".join([f"Route: {route}", "",
+                                  f"Current price: ${new_price:,.0f}",
+                                  f"Alert threshold: ${threshold:,.0f}", "",
+                                  f"Dashboard: {link}"]))
 
 # ── Scraper ───────────────────────────────────────────────────────────────────
 # Delta's bot protection rejects browsers launched by automation tools, so we start an
@@ -589,11 +590,21 @@ async def run(cfg):
     conn = open_db(cfg)
     sync_repo(cfg)
     trips = json.loads((REPO_DIR / "watchlist.json").read_text(encoding="utf-8")).get("trips", [])
+    legacy_ids = {t["id"] for t in trips}
+    # Routes added by users on flightfare.io/app; identical searches share one route_id
+    user_routes = [
+        {"id": r["route_id"], "label": r["label"], "origin": r["origin"], "destination": r["destination"],
+         "travel_date": r["travel_date"].isoformat(), "return_date": r["return_date"].isoformat(),
+         "outbound_flights": r["outbound_flights"], "cabin_class": r["cabin_class"]}
+        for r in conn.execute("SELECT DISTINCT ON (route_id) * FROM user_trips "
+                              "WHERE travel_date > %s ORDER BY route_id, id", (utcnow().date(),))
+        if r["route_id"] not in legacy_ids
+    ]
 
     max_per_day = cfg.get("max_runs_per_day", 2)
     today = utcnow().date()
     due = []
-    for trip in trips:
+    for trip in trips + user_routes:
         n = conn.execute(
             "SELECT COUNT(*) AS n FROM price_history WHERE trip_id=%s AND scraped_at::date=%s "
             "AND price_usd IS NOT NULL AND NOT synthetic",
@@ -624,7 +635,8 @@ async def run(cfg):
                  result["depart_time"], result["arrive_time"], result["fare_class"], result["flights"]),
             )
             any_scraped = True
-            fire_alerts(cfg, trip, result["price"], prev["price_usd"] if prev else None)
+            fire_alerts(cfg, alert_recipients(cfg, conn, trip, trip["id"] in legacy_ids), trip,
+                        result["price"], prev["price_usd"] if prev else None)
         else:
             conn.execute(
                 "INSERT INTO price_history (trip_id, scraped_at, notes) VALUES (%s,%s,'scrape failed')",
