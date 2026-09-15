@@ -5,6 +5,7 @@ import asyncio, json, re, shutil, smtplib, socket, subprocess, sys, os, time
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from pathlib import Path
 
 import psycopg
@@ -81,8 +82,9 @@ def send_email(cfg, to_list, subject, body_text):
     if not user or not pwd:
         print("  Email skipped — add smtp_user/smtp_password to config.json")
         return
+    sender = cfg.get("smtp_from", user)
     msg = MIMEMultipart()
-    msg["From"]    = user
+    msg["From"]    = formataddr(("FlightFare", sender))
     msg["To"]      = ", ".join(to_list)
     msg["Subject"] = subject
     msg.attach(MIMEText(body_text, "plain"))
@@ -90,10 +92,11 @@ def send_email(cfg, to_list, subject, body_text):
         with smtplib.SMTP(host, port) as s:
             s.starttls()
             s.login(user, pwd)
-            s.sendmail(user, to_list, msg.as_string())
-        print(f"  Email → {', '.join(to_list)}: sent")
+            s.sendmail(sender, to_list, msg.as_string())
     except Exception as e:
         print(f"  Email failed: {e}")
+        return
+    print(f"  Email → {', '.join(to_list)}: sent")
 
 def alert_recipients(cfg, conn, trip, legacy):
     """{email: (alert threshold or None, dashboard link)} for everyone following this route."""
