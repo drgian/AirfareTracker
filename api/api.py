@@ -32,6 +32,8 @@ LOGIN_TTL     = timedelta(minutes=30)
 SESSION_TTL   = timedelta(days=60)
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_JWKS   = jwt.PyJWKClient("https://www.googleapis.com/oauth2/v3/certs", cache_keys=True, lifespan=3600)
+# Set on the dev copy only: restricts every sign-in and request to these accounts
+PRIVATE_TO    = {e.strip().lower() for e in os.environ.get("PRIVATE_TO", "").split(",") if e.strip()}
 MAX_TRIPS     = 25
 MAX_FLIGHTS   = 4
 
@@ -156,10 +158,17 @@ class ResetIn(BaseModel):
     token: str = Field(max_length=200)
     password: str = Field(max_length=500)
 
+PRIVATE_MSG = "This test site is private."
+
+def allowed(email: str):
+    if PRIVATE_TO and email.lower() not in PRIVATE_TO:
+        raise HTTPException(403, PRIVATE_MSG)
+
 def clean_email(raw: str) -> str:
     email = raw.strip().lower()
     if not EMAIL_RE.match(email):
         raise HTTPException(400, "Please enter a valid email address.")
+    allowed(email)
     return email
 
 def client_ip(request: Request) -> str:
@@ -209,6 +218,7 @@ def google_login(body: GoogleIn, request: Request, conn=Depends(db)):
     if not claims.get("email") or not claims.get("email_verified"):
         raise HTTPException(401, "Your Google account's email address isn't verified.")
     email, sub = claims["email"].strip().lower(), claims["sub"]
+    allowed(email)
     user = (conn.execute("SELECT id FROM users WHERE google_sub=%s", (sub,)).fetchone()
             or conn.execute("SELECT id FROM users WHERE email=%s", (email,)).fetchone())
     if user:
@@ -269,6 +279,7 @@ def current_user(authorization: str = Header(default=""), conn=Depends(db)):
         "WHERE s.token_hash=%s AND s.expires_at > %s", (digest(token), utcnow())).fetchone()
     if not user:
         raise HTTPException(401, "Your session has expired. Please sign in again.")
+    allowed(user["email"])
     user["token_hash"] = digest(token)
     user["is_admin"] = user["role"] == "admin"
     return user
@@ -315,6 +326,8 @@ def optional_user(authorization: str = Header(default=""), conn=Depends(db)):
 
 @app.post("/feedback")
 def send_feedback(body: FeedbackIn, request: Request, user=Depends(optional_user), conn=Depends(db)):
+    if PRIVATE_TO and not user:
+        raise HTTPException(403, PRIVATE_MSG)
     message = body.message.strip()
     if not message:
         raise HTTPException(400, "Please write a message.")
@@ -697,4 +710,4 @@ def delete_trip(trip_id: int, user=Depends(current_user), conn=Depends(db)):
 @app.get("/health")
 def health(conn=Depends(db)):
     conn.execute("SELECT 1")
-    return {"ok": True, "version": VERSION}
+    return {"ok": True, "version": VERSION, "private": bool(PRIVATE_TO)}
