@@ -107,6 +107,12 @@ dialog h3{margin-bottom:4px}
 .signin-card{max-width:440px;margin:10vh auto 0;padding:30px 28px;text-align:center}
 .signin-card h2{color:var(--navy);margin-bottom:6px}
 .signin-card p.sub{margin-bottom:18px}
+.admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.admin-grid .stat .note{font-size:.76rem;color:var(--muted);margin-top:2px}
+.admin-h{font-size:1rem;margin:22px 2px 8px;color:var(--navy)}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.74rem;font-weight:600;background:var(--bg);border:1px solid var(--border);color:var(--muted)}
+.pill.ok{color:var(--lo);border-color:var(--lo)}.pill.bad{color:var(--hi);border-color:var(--hi)}
+.tab.admin-tab{margin-left:auto;color:var(--accent)}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -143,13 +149,12 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <span class="delta-only">Delta Air Lines fares only</span>
         <h1>Know the moment your fare changes.</h1>
         <p class="lede">FlightFare checks Delta twice a day for the trips you care about and emails you when the price moves.</p>
-        <form class="stack" id="signup-form">
+        <form class="signup" id="signup-form">
           <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
-          <input type="password" id="signup-password" placeholder="Choose a password (8+ characters)" autocomplete="new-password" required minlength="8" aria-label="Password">
-          <button class="btn primary" type="submit">Create account</button>
+          <button class="btn primary" type="submit">Get started</button>
         </form>
         <div class="err" id="signup-err"></div>
-        <p class="fine">We'll email you once to confirm your address.</p>
+        <p class="fine">We'll email you a link to confirm your address, then you'll choose a password.</p>
         <p class="switch">Already a member? <button class="btn link" data-go="signin">Sign in</button></p>
       </div>
       <div class="how">
@@ -179,8 +184,8 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
     <section id="v-reset" hidden>
       <div class="card signin-card">
-        <h2>Choose a new password</h2>
-        <p class="sub">You'll be signed in right after.</p>
+        <h2 id="reset-title">Choose a new password</h2>
+        <p class="sub" id="reset-sub">You'll be signed in right after.</p>
         <form class="stack" id="reset-form">
           <input type="password" id="reset-password" placeholder="New password (8+ characters)" autocomplete="new-password" required minlength="8" aria-label="New password">
           <button class="btn primary" type="submit">Save password</button>
@@ -204,7 +209,10 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
     <section id="v-app" hidden>
       <div class="toolbar">
         <div class="tabs" role="tablist" id="tabs"></div>
-        <button class="btn primary" id="add-open">+ Add trip</button>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <button class="btn" id="admin-open" hidden>Admin</button>
+          <button class="btn primary" id="add-open">+ Add trip</button>
+        </div>
       </div>
       <div id="panel"></div>
     </section>
@@ -385,11 +393,9 @@ function onSubmit(formId, errId, handler){
   });
 }
 onSubmit('signup-form', 'signup-err', async () => {
-  const email = $('signup-email').value.trim(), password = $('signup-password').value;
-  if (password.length < 8) throw new Error('Use a password with at least 8 characters.');
-  await api('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) });
-  $('signup-password').value = '';
-  sent('To finish creating your account, click the confirmation link we sent to', email);
+  const email = $('signup-email').value.trim();
+  await api('/auth/signup', { method: 'POST', body: JSON.stringify({ email }) });
+  sent('To create your account, click the confirmation link we sent to', email);
 });
 onSubmit('signin-form', 'signin-err', async () => {
   const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({
@@ -408,14 +414,25 @@ async function emailMe(mode){
 }
 $('forgot').addEventListener('click', () => emailMe('reset'));
 $('email-link').addEventListener('click', () => emailMe('signin'));
-let resetToken = null;
+let resetToken = null;   // set: reset via emailed link; null: signed-in user creating their first password
 onSubmit('reset-form', 'reset-err', async () => {
   const password = $('reset-password').value;
   if (password.length < 8) throw new Error('Use a password with at least 8 characters.');
-  const r = await api('/auth/reset', { method: 'POST', body: JSON.stringify({ token: resetToken, password }) });
+  if (resetToken) {
+    const r = await api('/auth/reset', { method: 'POST', body: JSON.stringify({ token: resetToken, password }) });
+    store.set('ff-session', r.session); resetToken = null;
+  } else {
+    await api('/auth/password', { method: 'POST', body: JSON.stringify({ password }) });
+  }
   $('reset-password').value = '';
-  store.set('ff-session', r.session); await loadApp();
+  await loadApp();
 });
+function askForPassword(){
+  $('reset-title').textContent = 'Create your password';
+  $('reset-sub').textContent = "You'll use it with your email to sign in next time.";
+  $('reset-password').placeholder = 'Password (8+ characters)';
+  show('reset'); $('reset-password').focus();
+}
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
   show(b.dataset.go); $(b.dataset.go + '-email').focus();
 }));
@@ -431,6 +448,7 @@ async function verify(token){
   try {
     const r = await api('/auth/verify', { method: 'POST', body: JSON.stringify({ token }) });
     store.set('ff-session', r.session);
+    if (r.needs_password) return askForPassword();
     await loadApp();
   } catch (err) {
     $('verify-title').textContent = "That link didn't work";
@@ -439,9 +457,12 @@ async function verify(token){
 }
 
 // ── dashboard ──
+let ME = null;
 async function loadApp(){
   const [me, list] = await Promise.all([api('/me'), api('/trips')]);
+  ME = me;
   $('acct-email').textContent = me.email;
+  $('admin-open').hidden = !me.is_admin;
   trips = list;
   const remembered = Number(store.get('ff-trip'));
   selectedId = trips.some(t => t.id === remembered) ? remembered : trips[0]?.id ?? null;
@@ -450,6 +471,12 @@ async function loadApp(){
 }
 function select(id){ selectedId = id; store.set('ff-trip', id); render(); }
 function render(){
+  $('admin-open').classList.toggle('primary', selectedId === 'admin');
+  if (selectedId === 'admin') {
+    $('tabs').replaceChildren(...trips.map(t => el('button', { class: 'tab', role: 'tab', 'aria-selected': 'false', onclick: () => select(t.id) }, t.label)));
+    if (chart) { chart.destroy(); chart = null; }
+    return renderAdmin();
+  }
   $('tabs').replaceChildren(...trips.map(t => el('button', {
     class: 'tab', role: 'tab', 'aria-selected': String(t.id === selectedId), onclick: () => select(t.id),
   }, t.label)));
@@ -612,6 +639,62 @@ function drawChart(t){
   });
 }
 
+// ── admin ──
+$('admin-open').addEventListener('click', () => { selectedId = 'admin'; render(); });
+const ago = iso => {
+  if (!iso) return '—';
+  const mins = Math.round((Date.now() - when(iso)) / 60000);
+  return mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} d ago`;
+};
+const short = iso => iso ? when(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+const STATUS_TEXT = { flights_not_found: 'flights not offered', cabin_unavailable: 'cabin unavailable', no_flights: 'no flights', airport_not_served: 'airport not served', error: 'temporary error' };
+
+async function renderAdmin(){
+  $('panel').replaceChildren(el('div', { class: 'card pending checking' }, 'Loading admin stats…'));
+  let stats, activity, users;
+  try { [stats, activity, users] = await Promise.all([api('/admin/stats'), api('/admin/activity'), api('/admin/users')]); }
+  catch (err) { $('panel').replaceChildren(el('div', { class: 'card banner' }, err.message)); return; }
+  if (selectedId !== 'admin') return;
+  const tile = (k, v, note, cls = '') => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k),
+    el('div', { class: 'v ' + cls }, v), note ? el('div', { class: 'note' }, note) : null);
+  const c24 = stats.checks_24h, c7 = stats.checks_7d;
+  const table = (heads, rows) => el('div', { class: 'card tablewrap' }, el('table', {},
+    el('thead', {}, el('tr', {}, heads.map(h => el('th', {}, h)))), el('tbody', {}, rows)));
+  const userRows = users.map(u => {
+    const btn = el('button', { class: 'btn', disabled: u.email === ME.email && u.is_admin ? true : false, onclick: async () => {
+      btn.disabled = true;
+      try { await api(`/admin/users/${u.id}/admin`, { method: 'POST', body: JSON.stringify({ is_admin: !u.is_admin }) }); renderAdmin(); }
+      catch (err) { alert(err.message); btn.disabled = false; }
+    } }, u.is_admin ? 'Remove admin' : 'Make admin');
+    return el('tr', {},
+      el('td', {}, el('b', {}, u.email), u.is_admin ? ' ' : null, u.is_admin ? el('span', { class: 'pill ok' }, 'admin') : null),
+      el('td', {}, short(u.created_at)), el('td', {}, ago(u.last_login_at)), el('td', {}, u.trips),
+      el('td', {}, el('span', { class: 'pill ' + (u.confirmed ? 'ok' : 'bad') }, u.confirmed ? 'confirmed' : 'unconfirmed')),
+      el('td', {}, u.has_password ? 'yes' : '—'), el('td', {}, btn));
+  });
+  const checkRows = activity.checks.map(r => el('tr', {},
+    el('td', {}, short(r.scraped_at)), el('td', {}, r.label || r.trip_id),
+    el('td', {}, r.price_usd != null ? el('b', {}, money(r.price_usd)) : el('span', { class: 'pill bad' }, STATUS_TEXT[(r.notes || '').replace('check failed: ', '')] || 'failed')),
+    el('td', {}, r.flights || '—'), el('td', {}, r.source === 'on-demand' ? 'instant' : 'scheduled')));
+  const problems = stats.problems.length
+    ? stats.problems.map(p => `${p.routes} ${STATUS_TEXT[p.status] || p.status}`).join(', ') : 'none';
+  $('panel').replaceChildren(el('div', {},
+    el('div', { class: 'trip-head' }, el('h2', {}, 'Admin'), el('span', { class: 'sub' }, `Updated ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`)),
+    el('div', { class: 'admin-grid' },
+      tile('Users', stats.users.total, `${stats.users.confirmed} confirmed · ${stats.users.new_7d} new this week`),
+      tile('Active (7 days)', stats.users.active_7d, `${stats.users.with_password} with passwords`),
+      tile('Trips tracked', stats.trips.trips, `${stats.trips.routes} distinct routes · ${stats.trips.users_with_trips} users`),
+      tile('Checks (24 h)', c24.scheduled.ok + c24.on_demand.ok, `${c24.on_demand.ok} instant · ${c24.scheduled.failed + c24.on_demand.failed} failed`, (c24.scheduled.failed + c24.on_demand.failed) ? 'hi' : ''),
+      tile('Checks (7 days)', c7.scheduled.ok + c7.on_demand.ok, `${c7.scheduled.failed + c7.on_demand.failed} failed`),
+      tile('Page views today', stats.views_today, `${Object.values(stats.views_14d).reduce((a, b) => a + b, 0)} in the last 14 days`)),
+    el('div', { class: 'card settings' },
+      el('span', {}, el('b', {}, 'System: '), `last scheduled check ${ago(stats.last_scheduled)} · last instant check ${ago(stats.last_on_demand)} · ${stats.queue} waiting in queue · trips with problems: ${problems}`)),
+    el('h3', { class: 'admin-h' }, 'Users'),
+    table(['Email', 'Joined', 'Last sign-in', 'Trips', 'Email', 'Password', ''], userRows),
+    el('h3', { class: 'admin-h' }, 'Recent price checks'),
+    table(['When', 'Trip', 'Result', 'Flights', 'Type'], checkRows)));
+}
+
 // ── add / edit trip ──
 const dlg = $('trip-dialog'), form = $('trip-form');
 const combos = { origin: document.querySelector('.combo[data-for=origin]'), destination: document.querySelector('.combo[data-for=destination]') };
@@ -712,6 +795,7 @@ async function boot(){
 // A sign-in link opened in a tab already on this page changes only the hash, which doesn't reload it
 window.addEventListener('hashchange', boot);
 boot();
+fetch(API + '/hit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: 'home' }) }).catch(() => {});
 </script>
 </body>
 </html>
