@@ -155,6 +155,20 @@ body.dev{padding-top:22px}
 .home-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .home-row .combo{flex:1;min-width:200px}
 .home-row .combo input[role=combobox],.stack .combo input[role=combobox],#settings-dialog .combo input[role=combobox]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text)}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.ov-card{padding:16px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
+.ov-card:hover{border-color:var(--navy)}
+.ov-card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.ov-card h3{margin:0;font-size:1.05rem;color:var(--text)}
+.ov-card .route{color:var(--muted);font-size:.84rem;margin-top:2px}
+.ov-card .prices{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.ov-card .big{font-size:1.6rem;font-weight:750;font-variant-numeric:tabular-nums}
+.ov-card .chg{font-weight:650;font-variant-numeric:tabular-nums}
+.ov-card .chg.up{color:var(--up)}.ov-card .chg.down{color:var(--down)}.ov-card .chg.flat{color:var(--muted)}
+.ov-card .low{color:var(--lo);font-size:.86rem;font-weight:600}
+.ov-card .acts{display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:10px;margin-top:auto}
+.ov-card .acts .btn{padding:5px 12px}
+.tab.overview-tab{font-weight:700}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -606,8 +620,10 @@ async function loadApp(){
   $('pw-banner').hidden = me.has_password || me.has_google;
   trips = list;
   const remembered = Number(store.get(KEY.trip));
-  const firstActive = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
-  selectedId = trips.some(t => t.id === remembered) ? remembered : firstActive;
+  const activeTrips = trips.filter(t => !t.archived);
+  const firstActive = activeTrips.length > 1 ? 'overview' : activeTrips[0]?.id ?? (trips.length ? 'archived' : null);
+  const saved = store.get(KEY.trip);
+  selectedId = saved === 'overview' && activeTrips.length ? 'overview' : trips.some(t => t.id === remembered) ? remembered : firstActive;
   trips.filter(t => t.check_pending).forEach(t => watchCheck(t.id));
   // First visit without a home airport (new sign-ups, Google sign-ins, older accounts): ask once
   if (!me.home_airport && store.get(KEY.session + '-home-skip') !== '1') {
@@ -632,11 +648,14 @@ function render(){
   const tabs = active.map(t => el('button', {
     class: 'tab', role: 'tab', 'aria-selected': String(t.id === selectedId), onclick: () => select(t.id),
   }, t.label));
+  if (active.length) tabs.unshift(el('button', { class: 'tab overview-tab', role: 'tab', 'aria-selected': String(selectedId === 'overview'),
+    onclick: () => select('overview') }, `My trips (${active.length})`));
   if (archived.length) tabs.push(el('button', { class: 'tab archived-tab', role: 'tab', 'aria-selected': String(onArchived),
     onclick: () => select('archived') }, `Archived (${archived.length})`));
   $('tabs').replaceChildren(...tabs);
   if (chart) { chart.destroy(); chart = null; }
   if (selectedId === 'archived') { $('panel').replaceChildren(archivedList(archived)); return; }
+  if (selectedId === 'overview') { $('panel').replaceChildren(active.length ? overview(active) : emptyView()); return; }
   const t = current;
   $('panel').replaceChildren(t ? tripView(t) : active.length ? (select(active[0].id), '') : emptyView());
   if (t && t.history.length) drawChart(t);
@@ -656,7 +675,7 @@ function watchCheck(id){
     try {
       const t = await api(`/trips/${id}`);
       replaceTrip(t);
-      if (!t.check_pending) { polling.delete(id); if (id === selectedId) render(); return; }
+      if (!t.check_pending) { polling.delete(id); if (id === selectedId || selectedId === 'overview') render(); return; }
     } catch { }
     if (!job.slow && Date.now() - job.started > 8 * 60e3) { job.slow = true; if (id === selectedId) render(); }
     job.timer = setTimeout(tick, 8000);
@@ -664,6 +683,41 @@ function watchCheck(id){
   job.timer = setTimeout(tick, 5000);
 }
 
+function overview(list){
+  const card = t => {
+    const h = t.history, last = h[h.length - 1], prev = h[h.length - 2];
+    const delta = last && prev ? last.price - prev.price : 0;
+    const chg = !last ? null : delta > 0 ? ['▲ ' + money(delta), 'up'] : delta < 0 ? ['▼ ' + money(-delta), 'down'] : ['no change', 'flat'];
+    const status = t.check_pending ? el('span', { class: 'pill' }, 'checking…')
+      : PROBLEMS[t.status] ? el('span', { class: 'pill bad' }, PROBLEMS[t.status])
+      : h.length ? el('span', { class: 'pill ok' }, 'tracking') : el('span', { class: 'pill' }, 'waiting');
+    const stop = e => e.stopPropagation();
+    const archive = el('button', { class: 'btn', onclick: async e => {
+        stop(e);
+        if (!confirm(`Archive ${t.label}? We'll stop checking its price, but keep it and its history under Archived.`)) return;
+        try { replaceTrip(await api(`/trips/${t.id}/archive`, { method: 'POST' })); render(); } catch (err) { alert(err.message); }
+      } }, 'Archive');
+    const del = deleteButton(t); del.addEventListener('click', stop, true);
+    return el('div', { class: 'card ov-card', role: 'button', tabindex: '0', onclick: () => select(t.id),
+        onkeydown: e => { if (e.key === 'Enter') select(t.id); } },
+      el('div', { class: 'top' },
+        el('div', {}, el('h3', {}, t.label),
+          el('div', { class: 'route' }, `${t.origin} → ${t.destination} · ${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`),
+          el('div', { class: 'route' }, t.outbound_flights || (t.preference === 'fastest' ? 'Fastest flights' : 'Cheapest flights'))),
+        status),
+      last
+        ? el('div', { class: 'prices' }, el('span', { class: 'big' }, money(last.price)),
+            el('span', { class: 'chg ' + chg[1] }, chg[0]),
+            el('span', { class: 'low' }, `lowest ${money(Math.min(...h.map(r => r.price)))}`))
+        : el('div', { class: 'route' }, t.check_pending ? 'Getting the first price from Delta…' : 'No price yet'),
+      el('div', { class: 'acts' },
+        el('button', { class: 'btn', onclick: e => { stop(e); openTrip(t); } }, 'Edit'), archive, del));
+  };
+  return el('div', {},
+    el('div', { class: 'trip-head' }, el('h2', {}, 'My trips'),
+      el('span', { class: 'sub' }, 'Click a trip to see its price chart.')),
+    el('div', { class: 'ov-grid' }, ...list.map(card)));
+}
 function archivedList(list){
   if (!list.length) return el('div', { class: 'card empty' }, el('h2', {}, 'Nothing archived'));
   return el('div', {},
@@ -791,7 +845,7 @@ function archivedSettings(t){
 async function removeTrip(id){
   await api(`/trips/${id}`, { method: 'DELETE' });
   trips = trips.filter(x => x.id !== id);
-  if (selectedId === id) selectedId = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
+  if (selectedId === id) selectedId = trips.some(t => !t.archived) ? 'overview' : (trips.length ? 'archived' : null);
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function drawChart(t){
