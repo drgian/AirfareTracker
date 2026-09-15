@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
+import jwt
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,8 @@ SMTP_PASSWORD = os.environ["SMTP_PASSWORD"]
 MAIL_FROM     = os.environ.get("MAIL_FROM", SMTP_USER)
 LOGIN_TTL     = timedelta(minutes=30)
 SESSION_TTL   = timedelta(days=60)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_JWKS   = jwt.PyJWKClient("https://www.googleapis.com/oauth2/v3/certs", cache_keys=True, lifespan=3600)
 MAX_TRIPS     = 25
 MAX_FLIGHTS   = 4
 
@@ -187,6 +190,35 @@ def login(body: LoginIn, request: Request, conn=Depends(db)):
         raise HTTPException(401, "That email and password don't match.")
     return {"session": new_session(conn, user["id"]), "email": user["email"]}
 
+class GoogleIn(BaseModel):
+    credential: str = Field(max_length=5000)
+
+@app.post("/auth/google")
+def google_login(body: GoogleIn, request: Request, conn=Depends(db)):
+    """Sign in with a Google ID token; links to an existing account with the same email."""
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(503, "Google sign-in isn't available yet.")
+    rate_limit("google-ip:" + client_ip(request), 30, 900)
+    try:
+        key = GOOGLE_JWKS.get_signing_key_from_jwt(body.credential)
+        claims = jwt.decode(body.credential, key.key, algorithms=["RS256"], audience=GOOGLE_CLIENT_ID,
+                            issuer=["https://accounts.google.com", "accounts.google.com"])
+    except Exception:
+        raise HTTPException(401, "Google sign-in didn't work. Please try again.")
+    if not claims.get("email") or not claims.get("email_verified"):
+        raise HTTPException(401, "Your Google account's email address isn't verified.")
+    email, sub = claims["email"].strip().lower(), claims["sub"]
+    user = (conn.execute("SELECT id FROM users WHERE google_sub=%s", (sub,)).fetchone()
+            or conn.execute("SELECT id FROM users WHERE email=%s", (email,)).fetchone())
+    if user:
+        # Google has verified this address, so it proves ownership of the matching account
+        conn.execute("UPDATE users SET google_sub=COALESCE(google_sub, %s), "
+                     "email_verified_at=COALESCE(email_verified_at, %s) WHERE id=%s", (sub, utcnow(), user["id"]))
+    else:
+        user = conn.execute("INSERT INTO users (email, google_sub, email_verified_at) VALUES (%s,%s,%s) RETURNING id",
+                            (email, sub, utcnow())).fetchone()
+    return {"session": new_session(conn, user["id"]), "email": email}
+
 @app.post("/auth/reset")
 def reset_password(body: ResetIn, conn=Depends(db)):
     valid_password(body.password)
@@ -230,7 +262,8 @@ def current_user(authorization: str = Header(default=""), conn=Depends(db)):
     if not hmac.compare_digest(scheme.lower(), "bearer") or not token:
         raise HTTPException(401, "Please sign in.")
     user = conn.execute(
-        "SELECT u.id, u.email, u.is_admin, u.password_hash IS NOT NULL AS has_password "
+        "SELECT u.id, u.email, u.is_admin, u.home_airport, u.password_hash IS NOT NULL AS has_password, "
+        "u.google_sub IS NOT NULL AS has_google "
         "FROM sessions s JOIN users u ON u.id = s.user_id "
         "WHERE s.token_hash=%s AND s.expires_at > %s", (digest(token), utcnow())).fetchone()
     if not user:
@@ -251,7 +284,61 @@ def logout(user=Depends(current_user), conn=Depends(db)):
 
 @app.get("/me")
 def me(user=Depends(current_user)):
-    return {"email": user["email"], "is_admin": user["is_admin"], "has_password": user["has_password"]}
+    return {"email": user["email"], "is_admin": user["is_admin"], "has_password": user["has_password"],
+            "has_google": user["has_google"], "home_airport": user["home_airport"]}
+
+class MeIn(BaseModel):
+    home_airport: str = Field(default="", max_length=3)
+
+@app.patch("/me")
+def update_me(body: MeIn, user=Depends(current_user), conn=Depends(db)):
+    code = body.home_airport.strip().upper()
+    if code and code not in AIRPORTS:
+        raise HTTPException(400, "Pick your home airport from the list.")
+    conn.execute("UPDATE users SET home_airport=%s WHERE id=%s", (code or None, user["id"]))
+    return {"home_airport": code or None}
+
+# ── Feedback ──────────────────────────────────────────────────────────────────
+class FeedbackIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    email: str = Field(default="", max_length=254)
+    page: str = Field(default="", max_length=40)
+
+def optional_user(authorization: str = Header(default=""), conn=Depends(db)):
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return conn.execute("SELECT u.id, u.email FROM sessions s JOIN users u ON u.id = s.user_id "
+                        "WHERE s.token_hash=%s AND s.expires_at > %s", (digest(token), utcnow())).fetchone()
+
+@app.post("/feedback")
+def send_feedback(body: FeedbackIn, request: Request, user=Depends(optional_user), conn=Depends(db)):
+    message = body.message.strip()
+    if not message:
+        raise HTTPException(400, "Please write a message.")
+    rate_limit("feedback:" + client_ip(request), 10)
+    email = user["email"] if user else body.email.strip().lower()
+    if email and not EMAIL_RE.match(email):
+        raise HTTPException(400, "That email address doesn't look right. Leave it blank if you prefer.")
+    conn.execute("INSERT INTO feedback (user_id, email, message, page) VALUES (%s,%s,%s,%s)",
+                 (user["id"] if user else None, email or None, message, body.page[:40]))
+    admins = [r["email"] for r in conn.execute("SELECT email FROM users WHERE is_admin")]
+    who = email or "an anonymous visitor"
+    for admin in admins:
+        try:
+            m = MIMEText(f"New feedback from {who}:\n\n{message}\n\nSee all feedback in the Admin tab: {APP_URL}", "plain")
+            m["From"] = formataddr(("FlightFare", MAIL_FROM))
+            m["To"] = admin
+            m["Subject"] = f"FlightFare feedback from {who}"
+            if email:
+                m["Reply-To"] = email
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
+                smtp.starttls()
+                smtp.login(SMTP_USER, SMTP_PASSWORD)
+                smtp.sendmail(MAIL_FROM, [admin], m.as_string())
+        except Exception:
+            pass   # the message is saved either way; the admin tab lists it
+    return {"ok": True}
 
 # ── Page views (anonymous daily counts; the static site has no analytics of its own) ──
 PAGES = {"home", "app"}
@@ -354,6 +441,13 @@ def admin_user_detail(user_id: int, user=Depends(admin_user), conn=Depends(db)):
     return {**{k: iso(v) for k, v in u.items()}, "active_sessions": sessions,
             "trips": [{k: iso(v) for k, v in t.items()} for t in trips]}
 
+@app.get("/admin/feedback")
+def admin_feedback(user=Depends(admin_user), conn=Depends(db)):
+    rows = conn.execute("SELECT id, created_at, email, message, page FROM feedback ORDER BY created_at DESC LIMIT 100").fetchall()
+    for r in rows:
+        r["created_at"] = r["created_at"].isoformat()
+    return rows
+
 class AdminIn(BaseModel):
     is_admin: bool
 
@@ -416,6 +510,10 @@ def trip_out(conn, t):
         t[k] = t[k].isoformat() if t[k] else None
     t.pop("created_at", None)
     t.pop("user_id", None)
+    # Trips archive themselves once the departure date has passed
+    t["archived"] = bool(t.get("archived_at")) or date.fromisoformat(t["travel_date"]) <= date.today()
+    t["auto_archived"] = not t.get("archived_at") and t["archived"]
+    t["archived_at"] = t["archived_at"].isoformat() if t.get("archived_at") else None
     t["history"] = history
     t["status"] = status["status"] if status else None
     t["status_detail"] = status["detail"] if status else None
@@ -506,6 +604,24 @@ def update_trip(trip_id: int, body: TripPatch, user=Depends(current_user), conn=
                      (*fields.values(), trip_id, user["id"])).fetchone()
     if not t:
         raise HTTPException(404, "Trip not found.")
+    return trip_out(conn, t)
+
+@app.post("/trips/{trip_id}/archive")
+def archive_trip(trip_id: int, user=Depends(current_user), conn=Depends(db)):
+    t = conn.execute("UPDATE user_trips SET archived_at=COALESCE(archived_at, %s) WHERE id=%s AND user_id=%s RETURNING *",
+                     (utcnow(), trip_id, user["id"])).fetchone()
+    if not t:
+        raise HTTPException(404, "Trip not found.")
+    return trip_out(conn, t)
+
+@app.post("/trips/{trip_id}/restore")
+def restore_trip(trip_id: int, user=Depends(current_user), conn=Depends(db)):
+    t = conn.execute("SELECT * FROM user_trips WHERE id=%s AND user_id=%s", (trip_id, user["id"])).fetchone()
+    if not t:
+        raise HTTPException(404, "Trip not found.")
+    if t["travel_date"] <= date.today():
+        raise HTTPException(400, "This trip's departure date has passed, so it can't be tracked again.")
+    t = conn.execute("UPDATE user_trips SET archived_at=NULL WHERE id=%s RETURNING *", (trip_id,)).fetchone()
     return trip_out(conn, t)
 
 @app.delete("/trips/{trip_id}")
