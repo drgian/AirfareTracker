@@ -714,7 +714,7 @@ async function renderUserDetail(id){
     el('td', {}, t.highest != null ? el('span', { style: 'color:var(--hi);font-weight:650' }, money(t.highest)) : '—'),
     el('td', {}, t.checks),
     el('td', {}, t.status && t.status !== 'ok' ? el('span', { class: 'pill bad' }, STATUS_TEXT[t.status] || t.status)
-                 : t.status ? el('span', { class: 'pill ok' }, 'ok') : 'waiting'),
+                 : (t.status || t.checks) ? el('span', { class: 'pill ok' }, 'ok') : 'waiting'),
     el('td', {}, t.alert_below ? money(t.alert_below) : '—')));
   $('panel').replaceChildren(el('div', {},
     el('div', { class: 'trip-head' },
