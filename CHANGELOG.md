@@ -1,7 +1,15 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-09-15)
 
+- My trips: an overview of all active trips (latest price, change, lowest seen, status) with Edit, Archive and
+  Delete on each card; opens by default when you have more than one trip.
+- Roles: basic (own trips), researcher (plus Analysis), admin (everything); admins set roles in the Admin tab.
+- Analysis tab for researchers and admins: price by day of week, time of day, and time before departure, each vs.
+  the route's own average, as dots with ±1σ whiskers (hover shows ±1 standard error too); how often and how much
+  prices move; per-route ranges. Real checks only (gap fill-ins excluded); all-routes view shows routes, not trip names.
+- Watchdog on the AWS server (`deploy/watchdog.py`, every 5 minutes): emails when the Windows price checker
+  goes offline for 10+ minutes, when it's back, and when an 8 AM / 6 PM check saves no prices.
 - Watchdog on the AWS server (`deploy/watchdog.py`, every 5 minutes): emails when the Windows price checker
   goes offline for 10+ minutes, when it's back, and when an 8 AM / 6 PM check saves no prices.
 

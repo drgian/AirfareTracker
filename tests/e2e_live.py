@@ -87,6 +87,14 @@ async def main():
         check(await pg.is_hidden("#admin-open"), "sign back in with password; regular user sees no Admin")
         await pg.click("#feedback-open"); await pg.click("#fb-send"); await pg.wait_for_timeout(300)
         check("write a message" in await pg.inner_text("#fb-err"), "feedback form validates (not sent)")
+        await pg.click("#fb-cancel")
+
+        sql(f"UPDATE users SET role='researcher' WHERE email='{EMAIL}'")
+        await pg.reload(wait_until="networkidle"); await pg.wait_for_timeout(800)
+        check(await pg.is_visible("#analysis-open") and await pg.is_hidden("#admin-open"), "researcher sees Analysis but not Admin")
+        await pg.click("#analysis-open"); await pg.wait_for_selector("text=Price by day of the week")
+        await pg.wait_for_timeout(600)
+        check(await pg.evaluate("analysisCharts.length") == 3, "Analysis renders its 3 charts with ±1σ whiskers")
         check(not errs, f"no JavaScript errors {errs}")
         await br.close()
 

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict eYA2gfH15tU9AsGCP29kj0I9rADlVW6JdrZv1vZcoBq15ngYUDVHIUUFz6kku56
+\restrict i5BdIYDZvar5u9EFKZWmicKM3VOMIY3leczNT36ec4Qh1v1vWQO1JHUtH1zz7iF
 
 -- Dumped from database version 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1)
 -- Dumped by pg_dump version 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1)
@@ -235,7 +235,9 @@ CREATE TABLE public.users (
     email_verified_at timestamp without time zone,
     is_admin boolean DEFAULT false NOT NULL,
     google_sub text,
-    home_airport text
+    home_airport text,
+    role text DEFAULT 'basic'::text NOT NULL,
+    CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['basic'::text, 'researcher'::text, 'admin'::text])))
 );
 
 
@@ -257,6 +259,16 @@ CREATE SEQUENCE public.users_id_seq
 --
 
 ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
+
+
+--
+-- Name: watchdog_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.watchdog_state (
+    key text NOT NULL,
+    value text NOT NULL
+);
 
 
 --
@@ -391,6 +403,14 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: watchdog_state watchdog_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.watchdog_state
+    ADD CONSTRAINT watchdog_state_pkey PRIMARY KEY (key);
+
+
+--
 -- Name: check_requests_open; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -447,5 +467,5 @@ ALTER TABLE ONLY public.user_trips
 -- PostgreSQL database dump complete
 --
 
-\unrestrict eYA2gfH15tU9AsGCP29kj0I9rADlVW6JdrZv1vZcoBq15ngYUDVHIUUFz6kku56
+\unrestrict i5BdIYDZvar5u9EFKZWmicKM3VOMIY3leczNT36ec4Qh1v1vWQO1JHUtH1zz7iF
 

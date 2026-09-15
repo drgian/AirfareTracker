@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
-VERSION       = "1.0.0"
+VERSION       = "1.1.0"
 DATABASE_URL  = os.environ.get("DATABASE_URL", "dbname=flighttracker")
 APP_URL       = os.environ.get("APP_URL", "https://flightfare.io/")
 SMTP_HOST     = os.environ.get("SMTP_HOST", "smtp.gmail.com")
@@ -263,13 +263,14 @@ def current_user(authorization: str = Header(default=""), conn=Depends(db)):
     if not hmac.compare_digest(scheme.lower(), "bearer") or not token:
         raise HTTPException(401, "Please sign in.")
     user = conn.execute(
-        "SELECT u.id, u.email, u.is_admin, u.home_airport, u.password_hash IS NOT NULL AS has_password, "
+        "SELECT u.id, u.email, u.role, u.home_airport, u.password_hash IS NOT NULL AS has_password, "
         "u.google_sub IS NOT NULL AS has_google "
         "FROM sessions s JOIN users u ON u.id = s.user_id "
         "WHERE s.token_hash=%s AND s.expires_at > %s", (digest(token), utcnow())).fetchone()
     if not user:
         raise HTTPException(401, "Your session has expired. Please sign in again.")
     user["token_hash"] = digest(token)
+    user["is_admin"] = user["role"] == "admin"
     return user
 
 @app.post("/auth/password")
@@ -285,7 +286,7 @@ def logout(user=Depends(current_user), conn=Depends(db)):
 
 @app.get("/me")
 def me(user=Depends(current_user)):
-    return {"email": user["email"], "is_admin": user["is_admin"], "has_password": user["has_password"],
+    return {"email": user["email"], "role": user["role"], "is_admin": user["is_admin"], "has_password": user["has_password"],
             "has_google": user["has_google"], "home_airport": user["home_airport"]}
 
 class MeIn(BaseModel):
@@ -323,7 +324,7 @@ def send_feedback(body: FeedbackIn, request: Request, user=Depends(optional_user
         raise HTTPException(400, "That email address doesn't look right. Leave it blank if you prefer.")
     conn.execute("INSERT INTO feedback (user_id, email, message, page) VALUES (%s,%s,%s,%s)",
                  (user["id"] if user else None, email or None, message, body.page[:40]))
-    admins = [r["email"] for r in conn.execute("SELECT email FROM users WHERE is_admin")]
+    admins = [r["email"] for r in conn.execute("SELECT email FROM users WHERE role = 'admin'")]
     who = email or "an anonymous visitor"
     for admin in admins:
         try:
@@ -357,9 +358,16 @@ def hit(body: HitIn, request: Request, conn=Depends(db)):
     return {"ok": True}
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
+ROLES = ("basic", "researcher", "admin")   # each role includes everything the one before it can see
+
 def admin_user(user=Depends(current_user)):
-    if not user["is_admin"]:
+    if user["role"] != "admin":
         raise HTTPException(403, "Admins only.")
+    return user
+
+def research_user(user=Depends(current_user)):
+    if user["role"] not in ("researcher", "admin"):
+        raise HTTPException(403, "Researchers and admins only.")
     return user
 
 def one(conn, sql, *params):
@@ -411,7 +419,7 @@ def admin_activity(user=Depends(admin_user), conn=Depends(db)):
 @app.get("/admin/users")
 def admin_users(user=Depends(admin_user), conn=Depends(db)):
     rows = conn.execute(
-        "SELECT u.id, u.email, u.is_admin, u.created_at, u.last_login_at, u.email_verified_at IS NOT NULL AS confirmed, "
+        "SELECT u.id, u.email, u.role, u.role = 'admin' AS is_admin, u.created_at, u.last_login_at, u.email_verified_at IS NOT NULL AS confirmed, "
         "u.password_hash IS NOT NULL AS has_password, COUNT(t.id) AS trips "
         "FROM users u LEFT JOIN user_trips t ON t.user_id = u.id GROUP BY u.id ORDER BY u.created_at").fetchall()
     for r in rows:
@@ -422,7 +430,7 @@ def admin_users(user=Depends(admin_user), conn=Depends(db)):
 @app.get("/admin/users/{user_id}")
 def admin_user_detail(user_id: int, user=Depends(admin_user), conn=Depends(db)):
     u = conn.execute(
-        "SELECT id, email, is_admin, created_at, last_login_at, email_verified_at, password_hash IS NOT NULL AS has_password "
+        "SELECT id, email, role, role = 'admin' AS is_admin, created_at, last_login_at, email_verified_at, password_hash IS NOT NULL AS has_password "
         "FROM users WHERE id=%s", (user_id,)).fetchone()
     if not u:
         raise HTTPException(404, "User not found.")
@@ -449,18 +457,72 @@ def admin_feedback(user=Depends(admin_user), conn=Depends(db)):
         r["created_at"] = r["created_at"].isoformat()
     return rows
 
-class AdminIn(BaseModel):
-    is_admin: bool
+class RoleIn(BaseModel):
+    role: str
 
-@app.post("/admin/users/{user_id}/admin")
-def set_admin(user_id: int, body: AdminIn, user=Depends(admin_user), conn=Depends(db)):
-    if user_id == user["id"] and not body.is_admin:
+@app.post("/admin/users/{user_id}/role")
+def set_role(user_id: int, body: RoleIn, user=Depends(admin_user), conn=Depends(db)):
+    if body.role not in ROLES:
+        raise HTTPException(400, "Role must be basic, researcher, or admin.")
+    if user_id == user["id"] and body.role != "admin":
         raise HTTPException(400, "You can't remove your own admin access.")
-    row = conn.execute("UPDATE users SET is_admin=%s WHERE id=%s RETURNING id, email, is_admin",
-                       (body.is_admin, user_id)).fetchone()
+    row = conn.execute("UPDATE users SET role=%s, is_admin=%s WHERE id=%s RETURNING id, email, role",
+                       (body.role, body.role == "admin", user_id)).fetchone()
     if not row:
         raise HTTPException(404, "User not found.")
     return row
+
+# ── Analysis (researchers and admins) ─────────────────────────────────────────
+# Real checks only: gap fill-ins are marked synthetic and excluded. Each price is compared with its own
+# route's average so trips with very different fares can be pooled ("rel" = +0.05 means 5% above average).
+ANALYSIS_BASE = """
+WITH trips AS (
+    SELECT DISTINCT ON (route_id) route_id, origin, destination, travel_date FROM user_trips ORDER BY route_id, id
+), p AS (
+    SELECT ph.trip_id AS route_id, ph.price_usd AS price, ph.scraped_at, t.travel_date, t.origin, t.destination,
+           (ph.scraped_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York' AS local_ts
+    FROM price_history ph JOIN trips t ON t.route_id = ph.trip_id
+    WHERE ph.price_usd IS NOT NULL AND NOT ph.synthetic
+      AND (%(scope)s = 'all' OR ph.trip_id IN (SELECT route_id FROM user_trips WHERE user_id = %(uid)s))
+), r AS (
+    SELECT route_id, avg(price) AS mean FROM p GROUP BY route_id HAVING count(*) >= 3
+), rel AS (
+    SELECT p.*, p.price / r.mean - 1 AS rel FROM p JOIN r USING (route_id)
+)
+"""
+
+@app.get("/analysis")
+def analysis(scope: str = "all", user=Depends(research_user), conn=Depends(db)):
+    if scope not in ("all", "mine"):
+        raise HTTPException(400, "Scope must be all or mine.")
+    args = {"scope": scope, "uid": user["id"]}
+    q = lambda sql: conn.execute(ANALYSIS_BASE + sql, args).fetchall()
+    summary = q("SELECT COUNT(*) AS checks, COUNT(DISTINCT route_id) AS routes, MIN(scraped_at) AS since, "
+                "(SELECT COUNT(*) FROM rel) AS usable FROM p")[0]
+    by_dow = q("SELECT EXTRACT(ISODOW FROM local_ts)::int AS dow, AVG(rel) AS rel, STDDEV_SAMP(rel) AS sd, COUNT(*) AS n, "
+               "COUNT(DISTINCT route_id) AS routes FROM rel GROUP BY 1 ORDER BY 1")
+    by_time = q("SELECT CASE WHEN EXTRACT(HOUR FROM local_ts) BETWEEN 5 AND 11 THEN 'Morning' "
+                "WHEN EXTRACT(HOUR FROM local_ts) BETWEEN 12 AND 16 THEN 'Afternoon' "
+                "WHEN EXTRACT(HOUR FROM local_ts) BETWEEN 17 AND 22 THEN 'Evening' ELSE 'Night' END AS slot, "
+                "AVG(rel) AS rel, STDDEV_SAMP(rel) AS sd, COUNT(*) AS n FROM rel GROUP BY 1")
+    by_days_out = q("SELECT b.label, b.lo, AVG(rel.rel) AS rel, STDDEV_SAMP(rel.rel) AS sd, COUNT(*) AS n FROM rel JOIN (VALUES "
+                    "('0–7 days',0,7),('1–2 weeks',8,14),('2–4 weeks',15,30),('1–2 months',31,60),"
+                    "('2–3 months',61,90),('3–6 months',91,180),('6+ months',181,100000)) AS b(label, lo, hi) "
+                    "ON (rel.travel_date - rel.local_ts::date) BETWEEN b.lo AND b.hi GROUP BY b.label, b.lo ORDER BY b.lo")
+    changes = q(", pairs AS (SELECT price, LAG(price) OVER (PARTITION BY route_id ORDER BY scraped_at) AS prev FROM p) "
+                "SELECT COUNT(prev) AS pairs, COUNT(*) FILTER (WHERE price <> prev) AS changed, "
+                "COUNT(*) FILTER (WHERE price > prev) AS ups, COUNT(*) FILTER (WHERE price < prev) AS downs, "
+                "AVG(ABS(price - prev)) FILTER (WHERE price <> prev) AS avg_move, "
+                "AVG(ABS(price - prev) / prev) FILTER (WHERE price <> prev) AS avg_move_pct, "
+                "MIN(price - prev) AS biggest_drop, MAX(price - prev) AS biggest_rise FROM pairs")[0]
+    routes = q("SELECT origin, destination, travel_date, COUNT(*) AS checks, MIN(price) AS low, MAX(price) AS high, "
+               "(ARRAY_AGG(price ORDER BY scraped_at DESC))[1] AS latest, COALESCE(STDDEV_SAMP(price) / AVG(price), 0) AS volatility "
+               "FROM p GROUP BY route_id, origin, destination, travel_date ORDER BY checks DESC, origin")
+    summary["since"] = summary["since"].isoformat() if summary["since"] else None
+    for r in routes:
+        r["travel_date"] = r["travel_date"].isoformat()
+    return {"scope": scope, "summary": summary, "by_dow": by_dow, "by_time": by_time,
+            "by_days_out": by_days_out, "changes": changes, "routes": routes}
 
 # ── Trips ─────────────────────────────────────────────────────────────────────
 FLIGHT_RE  = re.compile(r"([A-Z0-9]{2})\s*(\d{1,4})")
