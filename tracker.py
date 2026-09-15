@@ -20,7 +20,7 @@ BASE_DIR  = Path(__file__).resolve().parent
 CFG_FILE  = BASE_DIR / "config.json"
 REPO_DIR  = BASE_DIR / "site-repo"
 DASHBOARD = "https://flightfare.io/flight_tracker.html"
-APP_URL   = "https://flightfare.io/app/"
+APP_URL   = "https://flightfare.io/"
 # Task Scheduler may not see PATH changes made by installers until a reboot
 GIT = shutil.which("git") or r"C:\Program Files\Git\cmd\git.exe"
 
