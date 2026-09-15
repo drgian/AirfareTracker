@@ -126,7 +126,7 @@ def alert_recipients(cfg, conn, trip, legacy):
         for e in ([emails] if isinstance(emails, str) else emails):
             out[e.lower()] = (cfg.get("alert_below") if own else None, DASHBOARD)
     for r in conn.execute("SELECT u.email, t.alert_below FROM user_trips t JOIN users u ON u.id = t.user_id "
-                          "WHERE t.route_id=%s", (trip["id"],)):
+                          "WHERE t.route_id=%s AND t.archived_at IS NULL", (trip["id"],)):
         old = out.get(r["email"], (None, APP_URL))[0]
         out[r["email"]] = (r["alert_below"] if r["alert_below"] is not None else old, APP_URL)
     return out
@@ -672,7 +672,7 @@ def user_route_trips(conn):
          "outbound_flights": r["outbound_flights"], "cabin_class": r["cabin_class"],
          "preference": r["preference"]}
         for r in conn.execute("SELECT DISTINCT ON (route_id) * FROM user_trips "
-                              "WHERE travel_date > %s ORDER BY route_id, id", (utcnow().date(),))
+                              "WHERE travel_date > %s AND archived_at IS NULL ORDER BY route_id, id", (utcnow().date(),))
     ]
 
 def record_result(conn, cfg, trip, outcome, legacy, source="scheduled"):
@@ -705,12 +705,16 @@ async def run(cfg):
     sync_repo(cfg)
     trips = json.loads((REPO_DIR / "watchlist.json").read_text(encoding="utf-8")).get("trips", [])
     legacy_ids = {t["id"] for t in trips}
+    # Old watchlist trips stop once departed, or once every website user tracking that route archived it
+    archived_everywhere = {r["route_id"] for r in conn.execute(
+        "SELECT route_id FROM user_trips GROUP BY route_id HAVING bool_and(archived_at IS NOT NULL)")}
+    scrape_legacy = [t for t in trips if t["travel_date"] > utcnow().date().isoformat() and t["id"] not in archived_everywhere]
     user_routes = [t for t in user_route_trips(conn) if t["id"] not in legacy_ids]
 
     max_per_day = cfg.get("max_runs_per_day", 2)
     today = utcnow().date()
     due = []
-    for trip in trips + user_routes:
+    for trip in scrape_legacy + user_routes:
         n = conn.execute(
             "SELECT COUNT(*) AS n FROM price_history WHERE trip_id=%s AND scraped_at::date=%s "
             "AND price_usd IS NOT NULL AND NOT synthetic AND source='scheduled'",
