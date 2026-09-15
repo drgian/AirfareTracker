@@ -85,11 +85,13 @@ tr:last-child td{border-bottom:none}
 .empty p{color:var(--muted);margin:6px 0 18px}
 
 /* add-trip dialog */
-dialog{border:none;border-radius:14px;padding:0;background:var(--card);color:var(--text);width:min(520px,calc(100vw - 24px));box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog{margin:auto;max-height:calc(100vh - 24px);overflow:visible;border:none;border-radius:14px;padding:0;background:var(--card);color:var(--text);width:min(600px,calc(100vw - 24px));box-shadow:0 20px 60px rgba(0,0,0,.25)}
 dialog::backdrop{background:rgba(0,0,0,.35)}
 dialog form{padding:22px}
 dialog h3{margin-bottom:4px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.grid2 input,.grid2 select,.grid2 .datebtn{width:100%;min-width:0}
+@media (max-width:480px){.grid2{grid-template-columns:minmax(0,1fr)}dialog form{padding:18px 14px}}
 .field{display:flex;flex-direction:column;gap:4px;font-size:.84rem;color:var(--muted)}
 .field.full{grid-column:1/-1}
 .field input,.field select{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.95rem}
@@ -119,6 +121,40 @@ dialog h3{margin-bottom:4px}
 .or{display:flex;align-items:center;gap:10px;color:var(--faint);font-size:.8rem;margin:14px auto 12px;max-width:360px}
 .or::before,.or::after{content:"";flex:1;border-top:1px solid var(--border)}
 .gbtn{display:flex;justify-content:center;min-height:44px}
+.devflag{position:fixed;left:0;right:0;top:0;z-index:50;background:#b45309;color:#fff;text-align:center;font:700 .74rem/1.9 system-ui,sans-serif;letter-spacing:.08em}
+body.dev{padding-top:22px}
+.datebtn{width:100%;text-align:left;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.95rem;cursor:pointer}
+.datebtn.empty{color:var(--faint)}
+.rangecal{position:absolute;z-index:6;left:0;right:0;top:calc(100% + 4px);background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.2);padding:12px;user-select:none;touch-action:none}
+.rangecal .nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:.84rem;color:var(--muted)}
+.rangecal .nav button{border:1px solid var(--border);background:var(--card);border-radius:7px;width:30px;height:28px;cursor:pointer;color:var(--text)}
+.rangecal .months{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 18px}
+.rangecal .month h4{margin:0 0 6px;text-align:center;font-size:.9rem;color:var(--navy)}
+.rangecal .grid{display:grid;grid-template-columns:repeat(7,34px);gap:2px 0}
+.rangecal .dow{font-size:.7rem;color:var(--faint);text-align:center;padding-bottom:2px}
+.rangecal .day{height:32px;border:none;background:none;font-size:.84rem;color:var(--text);cursor:pointer;border-radius:0}
+.rangecal .day:disabled{color:var(--faint);opacity:.45;cursor:default}
+.rangecal .day.inrange{background:var(--fill)}
+.rangecal .day.start,.rangecal .day.end{background:var(--navy);color:#fff;border-radius:8px;font-weight:700}
+.rangecal .hint{font-size:.78rem;color:var(--muted);margin-top:8px;text-align:center}
+@media (max-width:640px){.rangecal .month+.month{display:none}.rangecal{padding:10px 6px}.rangecal .grid{grid-template-columns:repeat(7,minmax(0,1fr))}}
+.archived-banner{border-left-color:var(--muted)}
+.tab.archived-tab{color:var(--faint)}
+.arch-list{display:grid;gap:10px}
+.arch-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px}
+.arch-item .meta{color:var(--muted);font-size:.86rem}
+.arch-item .acts{display:flex;gap:8px}
+.fbbtn{margin:0 0 10px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:7px 16px;font-weight:600;font-size:.86rem;cursor:pointer}
+.fbbtn:hover{border-color:var(--accent);color:var(--accent)}
+#feedback-dialog textarea{width:100%;min-height:130px;resize:vertical;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+.fb-item{padding:12px 16px}
+.fb-item .meta{color:var(--muted);font-size:.8rem;margin-bottom:4px}
+.fb-item p{white-space:pre-wrap;margin:0}
+.acctbtn{border:none;background:none;padding:2px 4px;font:inherit;font-weight:700;color:var(--text);cursor:pointer;border-radius:6px;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acctbtn:hover{background:var(--bg);color:var(--navy)}
+.home-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.home-row .combo{flex:1;min-width:200px}
+.home-row .combo input[role=combobox],.stack .combo input[role=combobox],#settings-dialog .combo input[role=combobox]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text)}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -140,13 +176,14 @@ dialog h3{margin-bottom:4px}
 footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;line-height:1.7}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async onload="initGoogle()"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>
+<div class="devflag" id="devflag" hidden>DEV · TEST COPY · changes here don't affect flightfare.io</div>
 <div class="wrap">
   <header class="top">
     <a class="brand" href="./">✈ FlightFare</a>
-    <div class="acct" id="acct" hidden><span class="who">Signed in as</span><b id="acct-email"></b><button class="btn link" id="logout">Sign out</button></div>
+    <div class="acct" id="acct" hidden><span class="who">Signed in as</span><button class="acctbtn" id="acct-email" title="Account settings"></button><button class="btn link" id="logout">Sign out</button></div>
     <button class="btn" id="signin-top" hidden>Sign in</button>
   </header>
 
@@ -197,6 +234,8 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <p class="sub" id="reset-sub">You'll be signed in right after.</p>
         <form class="stack" id="reset-form" novalidate>
           <input type="password" id="reset-password" placeholder="New password (8+ characters)" autocomplete="new-password" required minlength="8" aria-label="New password">
+          <div id="signup-home" hidden><div class="combo" id="home-combo-signup" data-for="home_airport"></div>
+            <span class="fine" style="margin-top:4px;display:block">Your home airport: we'll fill it in when you add trips.</span></div>
           <button class="btn primary" type="submit">Save password</button>
         </form>
         <div class="err" id="reset-err"></div>
@@ -227,10 +266,19 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <span><b>Create a password</b>so you can sign in with your email and password, without waiting for email links.</span>
         <button class="btn primary" id="pw-create">Create password</button>
       </div>
+      <div class="card banner" id="home-banner" hidden>
+        <b>Where do you usually fly from?</b>
+        <div class="home-row" style="margin-top:8px">
+          <div class="combo" id="home-combo-banner" data-for="home_airport"></div>
+          <button class="btn primary" id="home-save">Save</button>
+          <button class="btn link" id="home-skip">Not now</button>
+        </div>
+      </div>
       <div id="panel"></div>
     </section>
   </main>
   <footer>
+    <button class="fbbtn" id="feedback-open" type="button">💬 Send feedback</button><br>
     Tracks <b>Delta Air Lines</b> fares only. Fares are round-trip per passenger incl. taxes, as shown on delta.com.<br>
     FlightFare is an independent service and is not affiliated with Delta Air Lines.<br>
     <a href="/privacy.html" style="color:inherit">Privacy</a> · <a href="/terms.html" style="color:inherit">Terms</a>
@@ -244,8 +292,11 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
     <div class="grid2">
       <div class="field">From<div class="combo" data-for="origin"></div></div>
       <div class="field">To<div class="combo" data-for="destination"></div></div>
-      <label class="field">Depart<input type="date" name="travel_date" required></label>
-      <label class="field">Return<input type="date" name="return_date" required></label>
+      <div class="field full" style="position:relative">Travel dates
+        <button type="button" class="datebtn empty" id="datebtn">Choose departure and return dates</button>
+        <input type="hidden" name="travel_date"><input type="hidden" name="return_date">
+        <div class="rangecal" id="rangecal" hidden></div>
+      </div>
       <label class="field">Cabin
         <select name="cabin_class">
           <option value="main_classic" selected>Main Classic</option>
@@ -275,6 +326,35 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
   </form>
 </dialog>
 
+<dialog id="settings-dialog">
+  <form id="settings-form" style="padding:22px" novalidate>
+    <h3>Your account</h3>
+    <p class="sub" id="settings-email" style="margin:4px 0 14px"></p>
+    <div class="field">Home airport<div class="combo" id="home-combo-settings" data-for="home_airport"></div></div>
+    <div class="err" id="settings-err"></div>
+    <div class="actions" style="justify-content:space-between">
+      <button class="btn link" type="button" id="settings-password">Change password</button>
+      <span style="display:flex;gap:8px"><button class="btn" type="button" id="settings-cancel">Close</button>
+      <button class="btn primary" type="submit">Save</button></span>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="feedback-dialog">
+  <form id="feedback-form" style="padding:22px" novalidate>
+    <h3>Send feedback</h3>
+    <p class="sub" style="margin:4px 0 12px">Ideas, problems, anything. It goes straight to the person who runs FlightFare.</p>
+    <textarea id="fb-message" maxlength="4000" placeholder="What's on your mind?" aria-label="Your feedback"></textarea>
+    <input type="email" id="fb-email" placeholder="Your email (optional, if you'd like a reply)" autocomplete="email"
+      style="width:100%;margin-top:8px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
+    <div class="err" id="fb-err"></div>
+    <div class="actions">
+      <button class="btn" type="button" id="fb-cancel">Cancel</button>
+      <button class="btn primary" type="submit" id="fb-send">Send</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="confirm-dialog">
   <form method="dialog" style="padding:22px">
     <h3>This is a new trip</h3>
@@ -288,7 +368,10 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 </dialog>
 
 <script>
-const API = 'https://api.flightfare.io';
+// flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
+const DEV = location.pathname.startsWith('/dev');
+const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
+const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
 const $ = id => document.getElementById(id);
 const store = {
   get(k){ try { return localStorage.getItem(k); } catch { return null; } },
@@ -314,29 +397,33 @@ function show(view){
 }
 async function api(path, opts = {}){
   const headers = { 'Content-Type': 'application/json' };
-  const s = store.get('ff-session');
+  const s = store.get(KEY.session);
   if (s) headers.Authorization = 'Bearer ' + s;
   let res;
   try { res = await fetch(API + path, { ...opts, headers }); }
   catch { throw new Error("Can't reach FlightFare right now. Check your connection and try again."); }
-  if (res.status === 401 && s) { store.set('ff-session', null); show('signup'); throw new Error('Please sign in again.'); }
+  if (res.status === 401 && s) { store.set(KEY.session, null); show('signup'); throw new Error('Please sign in again.'); }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Something went wrong. Please try again.');
   return body;
 }
 
+if (DEV) { $('devflag').hidden = false; document.body.classList.add('dev'); document.title = 'FlightFare (dev)'; }
+
 // ── airports ──
 let AIRPORTS = null, BY_CODE = null;
 const regionName = (() => { try { const d = new Intl.DisplayNames(['en'], { type: 'region' }); return c => { try { return d.of(c); } catch { return c; } }; } catch { return c => c; } })();
+// Lowercase and strip accents so 'curacao' matches 'Curaçao'
+const fold = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 async function loadAirports(){
   if (AIRPORTS) return;
   const res = await fetch('/airports.json');
-  AIRPORTS = (await res.json()).map(([code, name, city, country, size]) =>
-    ({ code, name, city, country: regionName(country), size, hay: `${city} ${name} ${regionName(country)}`.toLowerCase() }));
+  AIRPORTS = (await res.json()).map(([code, name, city, country, size, extra = '']) =>
+    ({ code, name, city, country: regionName(country), size, hay: fold(`${city} ${name} ${regionName(country)} ${extra}`) }));
   BY_CODE = new Map(AIRPORTS.map(a => [a.code, a]));
 }
 function searchAirports(q){
-  q = q.trim().toLowerCase();
+  q = fold(q.trim());
   if (!q) return [];
   const up = q.toUpperCase();
   const scored = [];
@@ -344,7 +431,7 @@ function searchAirports(q){
     let s = null;
     if (a.code === up) s = 0;
     else if (q.length <= 3 && a.code.startsWith(up)) s = 1;
-    else if (a.city.toLowerCase().startsWith(q)) s = 2;
+    else if (fold(a.city).startsWith(q)) s = 2;
     else if (a.hay.includes(' ' + q) || a.hay.startsWith(q)) s = 3;
     else if (q.length >= 3 && a.hay.includes(q)) s = 4;
     if (s !== null) scored.push([s, a.size, a.city, a]);
@@ -415,7 +502,7 @@ onSubmit('signin-form', 'signin-err', async () => {
   const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({
     email: $('signin-email').value.trim(), password: $('signin-password').value }) });
   $('signin-password').value = '';
-  store.set('ff-session', r.session); await loadApp();
+  store.set(KEY.session, r.session); await loadApp();
 });
 async function emailMe(mode){
   $('signin-err').textContent = '';
@@ -434,9 +521,11 @@ onSubmit('reset-form', 'reset-err', async () => {
   if (password.length < 8) throw new Error('Use a password with at least 8 characters.');
   if (resetToken) {
     const r = await api('/auth/reset', { method: 'POST', body: JSON.stringify({ token: resetToken, password }) });
-    store.set('ff-session', r.session); resetToken = null;
+    store.set(KEY.session, r.session); resetToken = null;
   } else {
     await api('/auth/password', { method: 'POST', body: JSON.stringify({ password }) });
+    const home = comboValue('home-combo-signup');
+    if (home) await api('/me', { method: 'PATCH', body: JSON.stringify({ home_airport: home }) });
   }
   $('reset-password').value = '';
   await loadApp();
@@ -453,16 +542,21 @@ function initGoogle(){
       err.textContent = '';
       try {
         const r = await api('/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
-        store.set('ff-session', r.session); await loadApp();
+        store.set(KEY.session, r.session); await loadApp();
       } catch (e) { err.textContent = e.message; }
     } });
   for (const [id, text] of [['g-signup', 'signup_with'], ['g-signin', 'signin_with']])
     google.accounts.id.renderButton($(id), { theme: 'outline', size: 'large', shape: 'pill', text, width: 300 });
   document.querySelectorAll('.google-area').forEach(a => a.hidden = false);
 }
+// Google's script loads async; the window load event waits for it
+if (document.readyState === 'complete') initGoogle(); else window.addEventListener('load', initGoogle);
 function askForPassword(){
-  $('reset-title').textContent = 'Create your password';
-  $('reset-sub').textContent = "You'll use it with your email to sign in next time.";
+  const changing = ME?.has_password;
+  $('reset-title').textContent = changing ? 'Choose a new password' : 'Create your password';
+  $('reset-sub').textContent = changing ? "You'll use it next time you sign in." : "You'll use it with your email to sign in next time.";
+  $('signup-home').hidden = !!(ME?.home_airport) || changing;
+  loadAirports();
   $('reset-password').placeholder = 'Password (8+ characters)';
   show('reset'); $('reset-password').focus();
 }
@@ -473,14 +567,14 @@ $('signin-top').addEventListener('click', () => { show('signin'); $('signin-emai
 $('sent-back').addEventListener('click', () => show('signup'));
 $('logout').addEventListener('click', async () => {
   try { await api('/auth/logout', { method: 'POST' }); } catch {}
-  store.set('ff-session', null); show('signup');
+  store.set(KEY.session, null); show('signup');
 });
 async function verify(token){
   show('verify');
   history.replaceState(null, '', location.pathname);
   try {
     const r = await api('/auth/verify', { method: 'POST', body: JSON.stringify({ token }) });
-    store.set('ff-session', r.session);
+    store.set(KEY.session, r.session);
     if (r.needs_password) return askForPassword();
     await loadApp();
   } catch (err) {
@@ -491,19 +585,27 @@ async function verify(token){
 
 // ── dashboard ──
 let ME = null;
+const comboValue = id => $(id).querySelector('input[type=hidden]').value;
+async function saveHome(code){
+  const r = await api('/me', { method: 'PATCH', body: JSON.stringify({ home_airport: code }) });
+  ME.home_airport = r.home_airport;
+  $('home-banner').hidden = true;
+}
 async function loadApp(){
   const [me, list] = await Promise.all([api('/me'), api('/trips')]);
   ME = me;
+  loadAirports().then(() => { $('home-banner').hidden = !!me.home_airport || store.get(KEY.session + '-home-skip') === '1'; });
   $('acct-email').textContent = me.email;
   $('admin-open').hidden = !me.is_admin;
   $('pw-banner').hidden = me.has_password || me.has_google;
   trips = list;
-  const remembered = Number(store.get('ff-trip'));
-  selectedId = trips.some(t => t.id === remembered) ? remembered : trips[0]?.id ?? null;
+  const remembered = Number(store.get(KEY.trip));
+  const firstActive = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
+  selectedId = trips.some(t => t.id === remembered) ? remembered : firstActive;
   show('app'); render();
   trips.filter(t => t.check_pending).forEach(t => watchCheck(t.id));
 }
-function select(id){ selectedId = id; store.set('ff-trip', id); render(); }
+function select(id){ selectedId = id; store.set(KEY.trip, id); render(); }
 function render(){
   $('admin-open').classList.toggle('primary', selectedId === 'admin');
   if (selectedId === 'admin') {
@@ -511,12 +613,17 @@ function render(){
     if (chart) { chart.destroy(); chart = null; }
     return renderAdmin();
   }
-  $('tabs').replaceChildren(...trips.map(t => el('button', {
+  const active = trips.filter(t => !t.archived), archived = trips.filter(t => t.archived);
+  const current = trips.find(x => x.id === selectedId);
+  const onArchived = selectedId === 'archived' || current?.archived;
+  $('tabs').replaceChildren(...active.map(t => el('button', {
     class: 'tab', role: 'tab', 'aria-selected': String(t.id === selectedId), onclick: () => select(t.id),
-  }, t.label)));
+  }, t.label)), archived.length ? el('button', { class: 'tab archived-tab', role: 'tab', 'aria-selected': String(onArchived),
+    onclick: () => select('archived') }, `Archived (${archived.length})`) : null);
   if (chart) { chart.destroy(); chart = null; }
-  const t = trips.find(x => x.id === selectedId);
-  $('panel').replaceChildren(t ? tripView(t) : emptyView());
+  if (selectedId === 'archived') { $('panel').replaceChildren(archivedList(archived)); return; }
+  const t = current;
+  $('panel').replaceChildren(t ? tripView(t) : active.length ? (select(active[0].id), '') : emptyView());
   if (t && t.history.length) drawChart(t);
 }
 function replaceTrip(updated){
@@ -542,6 +649,19 @@ function watchCheck(id){
   job.timer = setTimeout(tick, 5000);
 }
 
+function archivedList(list){
+  if (!list.length) return el('div', { class: 'card empty' }, el('h2', {}, 'Nothing archived'));
+  return el('div', {},
+    el('div', { class: 'trip-head' }, el('h2', {}, 'Archived trips'), el('span', { class: 'sub' }, 'Prices are no longer checked for these.')),
+    el('div', { class: 'arch-list' }, ...list.map(t => {
+      const last = t.history[t.history.length - 1];
+      return el('div', { class: 'card arch-item' },
+        el('div', {}, el('b', {}, t.label),
+          el('div', { class: 'meta' }, `${t.origin} → ${t.destination} · ${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`
+            + (last ? ` · last price ${money(last.price)}` : '') + (t.auto_archived ? ' · departed' : ''))),
+        el('div', { class: 'acts' }, el('button', { class: 'btn', onclick: () => select(t.id) }, 'View history'), deleteButton(t)));
+    })));
+}
 function emptyView(){
   return el('div', { class: 'card empty' },
     el('h2', {}, 'No trips yet'),
@@ -570,7 +690,11 @@ function tripView(t){
     ? el('div', { class: 'card banner' }, el('b', {}, PROBLEMS[t.status]),
         `${t.status_detail || ''} Check the details with Edit, or remove this trip.`)
     : null;
-  const settings = settingsView(t);
+  const settings = t.archived ? archivedSettings(t) : settingsView(t);
+  const archivedNote = t.archived
+    ? el('div', { class: 'card banner archived-banner' }, el('b', {}, 'Archived'), 'Prices are no longer being checked for this trip.')
+    : null;
+  if (t.archived && !h.length) return el('div', {}, head, archivedNote, settings);
   if (!h.length) {
     const job = polling.get(t.id);
     let box;
@@ -591,7 +715,7 @@ function tripView(t){
   const chg = delta > 0 ? ['▲ ' + money(delta), 'up'] : delta < 0 ? ['▼ ' + money(-delta), 'down'] : ['$0', 'flat'];
   const stat = (k, v, cls = '') => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k), el('div', { class: 'v ' + cls }, v));
   const checked = when(last.scraped_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  return el('div', {}, head, problem,
+  return el('div', {}, head, archivedNote || problem,
     el('div', { class: 'stats' },
       stat('Latest', money(last.price)), stat('Change', chg[0], chg[1]),
       stat('Lowest seen', money(Math.min(...prices)), 'lo'), stat('Highest seen', money(Math.max(...prices)), 'hi')),
@@ -626,17 +750,33 @@ function settingsView(t){
       } catch (err) { msg.textContent = err.message; }
     } },
     el('label', {}, 'Alert me below $ ', input), el('button', { class: 'btn', type: 'submit' }, 'Save'), msg);
-  const remove = el('button', { class: 'btn link danger', onclick: async () => {
-      if (!confirm(`Stop tracking ${t.label}?`)) return;
-      try { await removeTrip(t.id); render(); } catch (err) { alert(err.message); }
-    } }, 'Stop tracking');
-  return el('div', { class: 'card settings' }, form, remove,
+  const archive = el('button', { class: 'btn', onclick: async () => {
+      if (!confirm(`Archive ${t.label}? We'll stop checking its price, but keep it and its price history under Archived.`)) return;
+      try { replaceTrip(await api(`/trips/${t.id}/archive`, { method: 'POST' })); select('archived'); } catch (err) { alert(err.message); }
+    } }, 'Archive');
+  return el('div', { class: 'card settings' }, form,
+    el('div', { style: 'display:flex;gap:8px' }, archive, deleteButton(t)),
     el('p', { class: 'note' }, "We also email you whenever this trip's price changes."));
+}
+function deleteButton(t){
+  return el('button', { class: 'btn link danger', onclick: async () => {
+    if (!confirm(`Delete ${t.label} and its price history? This can't be undone.`)) return;
+    try { await removeTrip(t.id); render(); } catch (err) { alert(err.message); }
+  } }, 'Delete');
+}
+function archivedSettings(t){
+  const restore = t.auto_archived ? null : el('button', { class: 'btn primary', onclick: async () => {
+      try { replaceTrip(await api(`/trips/${t.id}/restore`, { method: 'POST' })); select(t.id); } catch (err) { alert(err.message); }
+    } }, 'Restore tracking');
+  return el('div', { class: 'card settings' },
+    el('span', { class: 'sub' }, t.auto_archived ? 'This trip was archived automatically because its departure date has passed.'
+                                                 : `Archived ${short(t.archived_at)}. Restore it to start checking prices again.`),
+    el('div', { style: 'display:flex;gap:8px' }, restore, deleteButton(t)));
 }
 async function removeTrip(id){
   await api(`/trips/${id}`, { method: 'DELETE' });
   trips = trips.filter(x => x.id !== id);
-  if (selectedId === id) selectedId = trips[0]?.id ?? null;
+  if (selectedId === id) selectedId = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function drawChart(t){
@@ -673,6 +813,47 @@ function drawChart(t){
   });
 }
 
+// ── home airport & account settings ──
+$('home-save').addEventListener('click', async () => {
+  const code = comboValue('home-combo-banner');
+  if (!code) { alert('Pick an airport from the list first.'); return; }
+  try { await saveHome(code); } catch (err) { alert(err.message); }
+});
+$('home-skip').addEventListener('click', () => { store.set(KEY.session + '-home-skip', '1'); $('home-banner').hidden = true; });
+$('acct-email').addEventListener('click', async () => {
+  await loadAirports();
+  $('settings-email').textContent = ME.email; $('settings-err').textContent = '';
+  $('home-combo-settings').set(ME.home_airport || '');
+  $('settings-dialog').showModal();
+});
+$('settings-cancel').addEventListener('click', () => $('settings-dialog').close());
+$('settings-password').addEventListener('click', () => { $('settings-dialog').close(); askForPassword(); });
+$('settings-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  try { await saveHome(comboValue('home-combo-settings')); $('settings-dialog').close(); }
+  catch (err) { $('settings-err').textContent = err.message; }
+});
+
+// ── feedback ──
+$('feedback-open').addEventListener('click', () => {
+  $('fb-err').textContent = ''; $('fb-send').disabled = false; $('fb-send').textContent = 'Send';
+  $('fb-email').hidden = !!ME && !$('v-app').hidden;   // signed-in users are identified automatically
+  $('feedback-dialog').showModal(); $('fb-message').focus();
+});
+$('fb-cancel').addEventListener('click', () => $('feedback-dialog').close());
+$('feedback-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const message = $('fb-message').value.trim();
+  if (!message) { $('fb-err').textContent = 'Please write a message.'; return; }
+  $('fb-err').textContent = ''; $('fb-send').disabled = true;
+  try {
+    await api('/feedback', { method: 'POST', body: JSON.stringify({ message, email: $('fb-email').hidden ? '' : $('fb-email').value.trim(),
+      page: $('v-app').hidden ? 'home' : 'dashboard' }) });
+    $('fb-message').value = ''; $('fb-send').textContent = 'Sent. Thank you!';
+    setTimeout(() => $('feedback-dialog').close(), 1200);
+  } catch (err) { $('fb-err').textContent = err.message; $('fb-send').disabled = false; }
+});
+
 // ── admin ──
 $('admin-open').addEventListener('click', () => { selectedId = 'admin'; render(); });
 const ago = iso => {
@@ -685,8 +866,8 @@ const STATUS_TEXT = { flights_not_found: 'flights not offered', cabin_unavailabl
 
 async function renderAdmin(){
   $('panel').replaceChildren(el('div', { class: 'card pending checking' }, 'Loading admin stats…'));
-  let stats, activity, users;
-  try { [stats, activity, users] = await Promise.all([api('/admin/stats'), api('/admin/activity'), api('/admin/users')]); }
+  let stats, activity, users, feedback;
+  try { [stats, activity, users, feedback] = await Promise.all([api('/admin/stats'), api('/admin/activity'), api('/admin/users'), api('/admin/feedback')]); }
   catch (err) { $('panel').replaceChildren(el('div', { class: 'card banner' }, err.message)); return; }
   if (selectedId !== 'admin') return;
   const tile = (k, v, note, cls = '') => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k),
@@ -724,6 +905,12 @@ async function renderAdmin(){
       tile('Page views today', stats.views_today, `${Object.values(stats.views_14d).reduce((a, b) => a + b, 0)} in the last 14 days`)),
     el('div', { class: 'card settings' },
       el('span', {}, el('b', {}, 'System: '), `last scheduled check ${ago(stats.last_scheduled)} · last instant check ${ago(stats.last_on_demand)} · ${stats.queue} waiting in queue · trips with problems: ${problems}`)),
+    el('h3', { class: 'admin-h' }, `Feedback (${feedback.length})`),
+    feedback.length
+      ? el('div', { class: 'arch-list' }, ...feedback.slice(0, 20).map(f => el('div', { class: 'card fb-item' },
+          el('div', { class: 'meta' }, `${short(f.created_at)} · ${f.email || 'anonymous'} · from ${f.page || 'site'}`),
+          el('p', {}, f.message))))
+      : el('div', { class: 'card pending' }, 'No feedback yet.'),
     el('h3', { class: 'admin-h' }, 'Users'),
     table(['Email', 'Joined', 'Last sign-in', 'Trips', 'Email', 'Password', ''], userRows),
     el('h3', { class: 'admin-h' }, 'Recent price checks'),
@@ -779,21 +966,92 @@ async function openTrip(t = null){
   form.reset(); $('trip-err').textContent = '';
   $('trip-title').textContent = t ? 'Edit trip' : 'Track a trip';
   $('trip-submit').textContent = t ? 'Save changes' : 'Track trip';
-  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-  form.travel_date.min = tomorrow; form.return_date.min = tomorrow;
   await loadAirports();
-  combos.origin.set(t?.origin || ''); combos.destination.set(t?.destination || '');
+  combos.origin.set(t?.origin || (t ? '' : ME?.home_airport || '')); combos.destination.set(t?.destination || '');
   if (t) {
     for (const k of ['travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'preference', 'label']) form[k].value = t[k] ?? '';
     form.alert_below.value = t.alert_below ?? '';
   }
   syncPref();
+  range.load(t?.travel_date || '', t?.return_date || '');
   dlg.showModal();
-  if (!t) combos.origin.focus();
+  if (!t) (ME?.home_airport ? combos.destination : combos.origin).focus();
 }
 $('add-open').addEventListener('click', () => openTrip());
 $('trip-cancel').addEventListener('click', () => dlg.close());
-form.travel_date.addEventListener('change', e => { form.return_date.min = e.target.value; });
+// ── date range picker: click departure then return, or drag across; return can't precede departure ──
+const range = (() => {
+  const btn = $('datebtn'), cal = $('rangecal');
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const pretty = s => parse(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  let start = '', end = '', hover = '', view = null, downAt = '';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const first = iso(new Date(today.getTime() + 864e5)), last = iso(new Date(today.getTime() + 330 * 864e5));
+  const label = () => {
+    btn.classList.toggle('empty', !start);
+    btn.textContent = start && end ? `${pretty(start)}  →  ${pretty(end)}` : start ? `${pretty(start)}  →  pick a return date` : 'Choose departure and return dates';
+    form.travel_date.value = start; form.return_date.value = end;
+  };
+  // What to highlight: a drag in progress, a chosen range, or a departure plus the hovered return
+  const shown = () => {
+    if (downAt && hover && hover !== downAt) return downAt < hover ? [downAt, hover] : [hover, downAt];
+    if (downAt) return [downAt, ''];
+    return [start, end || (start && hover > start ? hover : '')];
+  };
+  const month = (y, m) => {
+    const box = el('div', { class: 'month' }, el('h4', {}, new Date(y, m, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })));
+    const grid = el('div', { class: 'grid' }, ...['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => el('div', { class: 'dow' }, d)));
+    for (let i = 0; i < new Date(y, m, 1).getDay(); i++) grid.append(el('div'));
+    const [lo, hi] = shown();
+    for (let d = 1; d <= new Date(y, m + 1, 0).getDate(); d++) {
+      const v = iso(new Date(y, m, d));
+      const cls = ['day', v === lo && 'start', v === hi && 'end', lo && hi && v > lo && v < hi && 'inrange'].filter(Boolean).join(' ');
+      grid.append(el('button', { type: 'button', class: cls, 'data-v': v, disabled: v < first || v > last,
+        'aria-label': parse(v).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) }, d));
+    }
+    box.append(grid); return box;
+  };
+  const paint = () => {
+    const a = new Date(view.getFullYear(), view.getMonth(), 1), b = new Date(a.getFullYear(), a.getMonth() + 1, 1);
+    cal.replaceChildren(
+      el('div', { class: 'nav' },
+        el('button', { type: 'button', 'aria-label': 'Previous month', onclick: () => { view = new Date(a.getFullYear(), a.getMonth() - 1, 1); paint(); } }, '‹'),
+        el('span', {}, !start || end ? 'Pick your departure date' : 'Now pick your return date'),
+        el('button', { type: 'button', 'aria-label': 'Next month', onclick: () => { view = new Date(a.getFullYear(), a.getMonth() + 1, 1); paint(); } }, '›')),
+      el('div', { class: 'months' }, month(a.getFullYear(), a.getMonth()), month(b.getFullYear(), b.getMonth())),
+      el('div', { class: 'hint' }, 'Tip: you can also drag from your departure date to your return date.'));
+  };
+  const finish = (a, b) => { start = a; end = b; hover = ''; label(); if (b) cal.hidden = true; else paint(); };
+  const dayAt = e => {
+    const t = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.day');
+    return t && !t.disabled ? t.dataset.v : '';
+  };
+  cal.addEventListener('pointerdown', e => {
+    const v = dayAt(e); if (!v) return;
+    downAt = v; hover = v; paint(); e.preventDefault();
+  });
+  cal.addEventListener('pointermove', e => {
+    const v = dayAt(e); if (!v || v === hover) return;
+    hover = v; if (downAt || (start && !end)) paint();
+  });
+  window.addEventListener('pointerup', e => {
+    if (!downAt) return;
+    const from = downAt, to = dayAt(e) || hover;
+    downAt = '';
+    if (to && to !== from) return finish(from < to ? from : to, from < to ? to : from);   // dragged across a range
+    // A tap: first tap sets departure; a later tap sets return, or restarts if it's not after departure
+    if (!start || end || from <= start) finish(from, ''); else finish(start, from);
+  });
+  btn.addEventListener('click', () => {
+    if (!cal.hidden) { cal.hidden = true; return; }
+    view = start ? parse(start) : new Date(today.getTime() + 864e5);
+    cal.hidden = false; paint();
+  });
+  // Capture phase: runs before the calendar redraws on press, so presses inside still count as inside
+  document.addEventListener('pointerdown', e => { if (!cal.hidden && !cal.contains(e.target) && e.target !== btn) cal.hidden = true; }, true);
+  return { load(a, b){ start = a; end = b; hover = ''; cal.hidden = true; label(); } };
+})();
 
 function readForm(){
   const f = Object.fromEntries(new FormData(form));
@@ -859,7 +1117,7 @@ async function boot(){
   }
   const token = params.get('login');
   if (token) return verify(token);
-  if (!store.get('ff-session')) return show('signup');
+  if (!store.get(KEY.session)) return show('signup');
   try { await loadApp(); } catch { show('signup'); }
 }
 // A sign-in link opened in a tab already on this page changes only the hash, which doesn't reload it
