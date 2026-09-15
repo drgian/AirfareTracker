@@ -1,0 +1,10 @@
+{
+  "origin": "GRR", "destination": "BON", "alert_below": 1050,
+  "alert_emails": ["<recipient for the original watchlist trips>"],
+  "alert_on_change": true, "max_runs_per_day": 2,
+  "smtp_host": "smtp.resend.com", "smtp_port": 587, "smtp_user": "resend",
+  "smtp_password": "<Resend API key>", "smtp_from": "alerts@flightfare.io",
+  "github_token": "<token with repo access, used to publish the legacy dashboard>",
+  "ssh_tunnel": {"host": "3.20.7.57", "user": "ubuntu", "key": "<AWS key file name>.pem", "local_port": 55432},
+  "database_url": "host=127.0.0.1 port=55432 dbname=flighttracker user=ubuntu password=<database password>"
+}

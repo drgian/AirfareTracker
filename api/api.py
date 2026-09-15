@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
+VERSION       = "1.0.0"
 DATABASE_URL  = os.environ.get("DATABASE_URL", "dbname=flighttracker")
 APP_URL       = os.environ.get("APP_URL", "https://flightfare.io/")
 SMTP_HOST     = os.environ.get("SMTP_HOST", "smtp.gmail.com")
@@ -634,4 +635,4 @@ def delete_trip(trip_id: int, user=Depends(current_user), conn=Depends(db)):
 @app.get("/health")
 def health(conn=Depends(db)):
     conn.execute("SELECT 1")
-    return {"ok": True}
+    return {"ok": True, "version": VERSION}

@@ -12,6 +12,8 @@ import psycopg
 from psycopg.rows import dict_row
 from playwright.async_api import async_playwright
 
+VERSION = "1.0.0"
+
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -750,7 +752,7 @@ async def worker(cfg):
         old = cfg["ssh_tunnel"].get("local_port", 55432)
         cfg = {**cfg, "ssh_tunnel": {**cfg["ssh_tunnel"], "local_port": WORKER_PORT},
                "database_url": cfg["database_url"].replace(f"port={old}", f"port={WORKER_PORT}")}
-    print(f"[{utcnow():%Y-%m-%d %H:%M}Z] worker started", flush=True)
+    print(f"[{utcnow():%Y-%m-%d %H:%M}Z] worker {VERSION} started", flush=True)
     tunnel = conn = None
     while True:
         try:
@@ -790,6 +792,7 @@ async def worker(cfg):
 
 async def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    print(f"FlightFare tracker {VERSION} · {utcnow():%Y-%m-%d %H:%M}Z", flush=True)
     cfg = load_cfg()
     if "--dry-run" in sys.argv:
         wl = subprocess.run(["curl", "-sf", WATCHLIST_URL], capture_output=True, text=True, check=True)

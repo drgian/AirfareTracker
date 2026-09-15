@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="format-detection" content="telephone=no, email=no, address=no, date=no">
+<title>FlightFare</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈</text></svg>">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--border:#e3e6eb;--text:#111827;--muted:#6b7280;--faint:#9ca3af;
+  --accent:#c8102e;--accent-ink:#fff;--navy:#003366;--line:#003366;--fill:rgba(0,51,102,.07);--grid:rgba(17,24,39,.06);
+  --up:#c8102e;--down:#15803d;--hi:#c8102e;--lo:#1f6fd1;--danger:#b91c1c;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04)}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--border:#2b3240;--text:#e6edf3;--muted:#9aa4b2;
+  --faint:#6e7681;--accent:#e0283f;--navy:#9dbbe3;--line:#8fb2e0;--fill:rgba(143,178,224,.12);--grid:rgba(230,237,243,.07);
+  --up:#ff5a6a;--down:#4ade80;--hi:#ff5a6a;--lo:#5aa2ff;--danger:#f87171;--shadow:none}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit;color:inherit}
+[hidden]{display:none!important}
+.wrap{max-width:980px;margin:0 auto;padding:0 18px}
+header.top{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.brand{font-weight:750;font-size:1.15rem;letter-spacing:-.01em;text-decoration:none;color:var(--navy)}
+.acct{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.88rem}
+.btn{border:1px solid var(--border);background:var(--card);border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600;font-size:.88rem}
+.btn:hover{border-color:var(--faint)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.link{border:none;background:none;color:var(--muted);padding:4px 6px}
+.btn.link:hover{color:var(--text)}
+.btn.danger{color:var(--danger)}
+.btn:disabled{opacity:.6;cursor:default}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow)}
+.err{color:var(--danger);font-size:.88rem;min-height:1.3em;margin-top:8px}
+
+/* sign-up */
+.hero{max-width:560px;margin:9vh auto 0;text-align:center}
+.hero h1{color:var(--navy);font-size:clamp(2rem,5vw,2.8rem);line-height:1.1;letter-spacing:-.02em;margin-bottom:14px}
+.hero p.lede{color:var(--muted);font-size:1.08rem;margin-bottom:28px}
+.signup{display:flex;gap:8px;max-width:440px;margin:0 auto}
+.signup input{flex:1;min-width:0;padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.signup input:focus,.field input:focus,.field select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.signup .btn{padding:11px 18px;border-radius:10px}
+.fine{color:var(--faint);font-size:.82rem;margin-top:12px}
+.how{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:56px auto 40px;max-width:760px;text-align:left}
+.how div{padding:16px 18px}
+.how b{display:block;margin-bottom:4px}
+.how span{color:var(--muted);font-size:.9rem}
+.notice{max-width:460px;margin:12vh auto 0;padding:32px;text-align:center}
+.notice h2{margin-bottom:10px}
+.notice p{color:var(--muted)}
+
+/* app */
+.toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);margin-bottom:22px}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tab{border:none;background:none;padding:10px 14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab[aria-selected=true]{color:var(--text);border-bottom-color:var(--accent)}
+.toolbar .btn{margin-bottom:8px;white-space:nowrap}
+.trip-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:16px}
+.trip-head h2{font-size:1.35rem;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:.9rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.stat{padding:12px 16px}
+.stat .k{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.stat .v{font-size:1.55rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.stat .v.up{color:var(--up)}.stat .v.down{color:var(--down)}.stat .v.flat{color:var(--muted)}
+.stat .v.hi{color:var(--hi)}.stat .v.lo{color:var(--lo)}
+.chart{padding:14px 14px 8px;margin-bottom:12px;height:300px}
+.chart canvas{width:100%!important;height:100%!important}
+details.hist{margin-bottom:14px}
+details.hist summary{cursor:pointer;color:var(--muted);font-size:.86rem;font-weight:600;padding:6px 2px;list-style:none}
+details.hist summary::-webkit-details-marker{display:none}
+details.hist summary::before{content:"▸ "}
+details.hist[open] summary::before{content:"▾ "}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.86rem;font-variant-numeric:tabular-nums}
+th{text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:9px 14px;border-bottom:1px solid var(--border)}
+td{padding:9px 14px;border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+.settings{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}
+.settings form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.9rem}
+.settings input{width:110px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.pending{padding:40px 24px;text-align:center;color:var(--muted);margin-bottom:12px}
+.empty{padding:56px 24px;text-align:center}
+.empty p{color:var(--muted);margin:6px 0 18px}
+
+/* add-trip dialog */
+dialog{margin:auto;max-height:calc(100vh - 24px);overflow:visible;border:none;border-radius:14px;padding:0;background:var(--card);color:var(--text);width:min(600px,calc(100vw - 24px));box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog form{padding:22px}
+dialog h3{margin-bottom:4px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.grid2 input,.grid2 select,.grid2 .datebtn{width:100%;min-width:0}
+@media (max-width:480px){.grid2{grid-template-columns:minmax(0,1fr)}dialog form{padding:18px 14px}}
+.field{display:flex;flex-direction:column;gap:4px;font-size:.84rem;color:var(--muted)}
+.field.full{grid-column:1/-1}
+.field input,.field select{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.95rem}
+.field input.code{text-transform:uppercase;letter-spacing:.08em}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+#acct-email{max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:560px){.acct .who{display:none}}
+.settings .note{flex-basis:100%;color:var(--muted);font-size:.82rem;margin-top:-4px}
+.stack{display:flex;flex-direction:column;gap:8px;max-width:360px;margin:0 auto;text-align:left}
+.stack input{padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.stack input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.stack .btn{padding:11px 18px;border-radius:10px;margin-top:4px}
+.links{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:.86rem}
+.switch{margin-top:14px;font-size:.9rem;color:var(--muted)}
+.switch button{font-weight:650;color:var(--accent);padding:0 2px}
+.signin-card{max-width:440px;margin:10vh auto 0;padding:30px 28px;text-align:center}
+.signin-card h2{color:var(--navy);margin-bottom:6px}
+.signin-card p.sub{margin-bottom:18px}
+.admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.admin-grid .stat .note{font-size:.76rem;color:var(--muted);margin-top:2px}
+.admin-h{font-size:1rem;margin:22px 2px 8px;color:var(--navy)}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.74rem;font-weight:600;background:var(--bg);border:1px solid var(--border);color:var(--muted)}
+.pill.ok{color:var(--lo);border-color:var(--lo)}.pill.bad{color:var(--hi);border-color:var(--hi)}
+.tab.admin-tab{margin-left:auto;color:var(--accent)}
+.userlink{border:none;background:none;padding:0;font-weight:700;color:var(--navy);cursor:pointer;text-align:left}
+.userlink:hover{text-decoration:underline}
+.or{display:flex;align-items:center;gap:10px;color:var(--faint);font-size:.8rem;margin:14px auto 12px;max-width:360px}
+.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--border)}
+.gbtn{display:flex;justify-content:center;min-height:44px}
+.devflag{position:fixed;left:0;right:0;top:0;z-index:50;background:#b45309;color:#fff;text-align:center;font:700 .74rem/1.9 system-ui,sans-serif;letter-spacing:.08em}
+body.dev{padding-top:22px}
+.datebtn{width:100%;text-align:left;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.95rem;cursor:pointer}
+.datebtn.empty{color:var(--faint)}
+.rangecal{position:absolute;z-index:6;left:0;right:0;top:calc(100% + 4px);background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.2);padding:12px;user-select:none;touch-action:none}
+.rangecal .nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:.84rem;color:var(--muted)}
+.rangecal .nav button{border:1px solid var(--border);background:var(--card);border-radius:7px;width:30px;height:28px;cursor:pointer;color:var(--text)}
+.rangecal .months{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 18px}
+.rangecal .month h4{margin:0 0 6px;text-align:center;font-size:.9rem;color:var(--navy)}
+.rangecal .grid{display:grid;grid-template-columns:repeat(7,34px);gap:2px 0}
+.rangecal .dow{font-size:.7rem;color:var(--faint);text-align:center;padding-bottom:2px}
+.rangecal .day{height:32px;border:none;background:none;font-size:.84rem;color:var(--text);cursor:pointer;border-radius:0}
+.rangecal .day:disabled{color:var(--faint);opacity:.45;cursor:default}
+.rangecal .day.inrange{background:var(--fill)}
+.rangecal .day.start,.rangecal .day.end{background:var(--navy);color:#fff;border-radius:8px;font-weight:700}
+.rangecal .hint{font-size:.78rem;color:var(--muted);margin-top:8px;text-align:center}
+@media (max-width:640px){.rangecal .month+.month{display:none}.rangecal{padding:10px 6px}.rangecal .grid{grid-template-columns:repeat(7,minmax(0,1fr))}}
+.archived-banner{border-left-color:var(--muted)}
+.tab.archived-tab{color:var(--faint)}
+.arch-list{display:grid;gap:10px}
+.arch-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px}
+.arch-item .meta{color:var(--muted);font-size:.86rem}
+.arch-item .acts{display:flex;gap:8px}
+.fbbtn{margin:0 0 10px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:7px 16px;font-weight:600;font-size:.86rem;cursor:pointer}
+.fbbtn:hover{border-color:var(--accent);color:var(--accent)}
+#feedback-dialog textarea{width:100%;min-height:130px;resize:vertical;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+.fb-item{padding:12px 16px}
+.fb-item .meta{color:var(--muted);font-size:.8rem;margin-bottom:4px}
+.fb-item p{white-space:pre-wrap;margin:0}
+.acctbtn{border:none;background:none;padding:2px 4px;font:inherit;font-weight:700;color:var(--text);cursor:pointer;border-radius:6px;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acctbtn:hover{background:var(--bg);color:var(--navy)}
+.home-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.home-row .combo{flex:1;min-width:200px}
+.home-row .combo input[role=combobox],.stack .combo input[role=combobox],#settings-dialog .combo input[role=combobox]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text)}
+.delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
+.delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.banner{padding:12px 16px;margin-bottom:12px;border-left:3px solid var(--accent);font-size:.9rem}
+.banner b{display:block;margin-bottom:2px}
+.pending.checking::before{content:"";display:inline-block;width:14px;height:14px;margin-right:10px;vertical-align:-2px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pending .hint{display:block;font-size:.84rem;margin-top:6px;color:var(--faint)}
+.combo{position:relative}
+.combo-list{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 4px);max-height:280px;overflow-y:auto;list-style:none;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:4px}
+.combo-list li{padding:8px 10px;border-radius:7px;cursor:pointer;color:var(--text);font-size:.88rem;line-height:1.3}
+.combo-list li[aria-selected=true],.combo-list li:hover{background:var(--bg)}
+.combo-list li b{display:inline-block;min-width:40px;color:var(--navy)}
+.combo-list li small{display:block;color:var(--muted);font-size:.78rem;margin-left:40px}
+.combo-list li.none{cursor:default;color:var(--muted)}
+.dialog-note{font-size:.84rem;color:var(--muted);margin-top:4px}
+#confirm-dialog p{color:var(--muted);margin:8px 0 0;font-size:.92rem}
+#confirm-dialog .actions{flex-wrap:wrap}
+footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;line-height:1.7}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
+</head>
+<body>
+<div class="devflag" id="devflag" hidden>DEV · TEST COPY · changes here don't affect flightfare.io</div>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./">✈ FlightFare</a>
+    <div class="acct" id="acct" hidden><span class="who">Signed in as</span><button class="acctbtn" id="acct-email" title="Account settings"></button><button class="btn link" id="logout">Sign out</button></div>
+    <button class="btn" id="signin-top" hidden>Sign in</button>
+  </header>
+
+  <main>
+    <section id="v-signup" hidden>
+      <div class="hero">
+        <span class="delta-only">Delta Air Lines fares only</span>
+        <h1>Know the moment your fare changes.</h1>
+        <p class="lede">FlightFare checks Delta twice a day for the trips you care about and emails you when the price moves.</p>
+        <form class="signup" id="signup-form">
+          <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
+          <button class="btn primary" type="submit">Get started</button>
+        </form>
+        <div class="err" id="signup-err"></div>
+        <p class="fine">We'll email you a link to confirm your address, then you'll choose a password.</p>
+        <div class="google-area" hidden><div class="or">or</div><div class="gbtn" id="g-signup"></div></div>
+        <p class="switch">Already a member? <button class="btn link" data-go="signin">Sign in</button></p>
+      </div>
+      <div class="how">
+        <div class="card"><b>1. Add a trip</b><span>Airports, dates, and optionally the exact Delta flights you want.</span></div>
+        <div class="card"><b>2. We watch it</b><span>You'll see today's fare in a minute or two, then we check every morning and evening.</span></div>
+        <div class="card"><b>3. Get an email</b><span>Whenever the price changes, or drops below your target.</span></div>
+      </div>
+    </section>
+
+    <section id="v-signin" hidden>
+      <div class="card signin-card">
+        <h2>Welcome back</h2>
+        <p class="sub">Sign in to see your trips.</p>
+        <form class="stack" id="signin-form">
+          <input type="email" id="signin-email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
+          <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password" required aria-label="Password">
+          <button class="btn primary" type="submit">Sign in</button>
+        </form>
+        <div class="err" id="signin-err"></div>
+        <div class="google-area" hidden><div class="or">or</div><div class="gbtn" id="g-signin"></div></div>
+        <div class="links">
+          <button class="btn link" type="button" id="forgot">Forgot password?</button>
+          <button class="btn link" type="button" id="email-link">Email me a sign-in link instead</button>
+        </div>
+        <p class="switch">New to FlightFare? <button class="btn link" data-go="signup">Get started</button></p>
+      </div>
+    </section>
+
+    <section id="v-reset" hidden>
+      <div class="card signin-card">
+        <h2 id="reset-title">Choose a new password</h2>
+        <p class="sub" id="reset-sub">You'll be signed in right after.</p>
+        <form class="stack" id="reset-form" novalidate>
+          <input type="password" id="reset-password" placeholder="New password (8+ characters)" autocomplete="new-password" required minlength="8" aria-label="New password">
+          <div id="signup-home" hidden><div class="combo" id="home-combo-signup" data-for="home_airport"></div>
+            <span class="fine" style="margin-top:4px;display:block">Your home airport: we'll fill it in when you add trips.</span></div>
+          <button class="btn primary" type="submit">Save password</button>
+        </form>
+        <div class="err" id="reset-err"></div>
+      </div>
+    </section>
+
+    <section id="v-welcome" hidden>
+      <div class="card signin-card">
+        <h2>Welcome to FlightFare!</h2>
+        <p class="sub">Where do you usually fly from? We'll fill it in whenever you add a trip.</p>
+        <form class="stack" id="welcome-form" novalidate>
+          <div class="combo" id="home-combo-welcome" data-for="home_airport"></div>
+          <button class="btn primary" type="submit">Continue</button>
+        </form>
+        <div class="err" id="welcome-err"></div>
+        <p class="switch"><button class="btn link" type="button" id="welcome-skip">Skip for now</button></p>
+      </div>
+    </section>
+
+    <section id="v-sent" hidden>
+      <div class="notice card">
+        <h2>Check your email</h2>
+        <p><span id="sent-what">We sent a sign-in link to</span> <b id="sent-email"></b>. It expires in 30 minutes.</p>
+        <p class="fine">Not there? Check spam, or <button class="btn link" id="sent-back">use a different email</button>.</p>
+      </div>
+    </section>
+
+    <section id="v-verify" hidden>
+      <div class="notice card"><h2 id="verify-title">Signing you in…</h2><p id="verify-msg"></p></div>
+    </section>
+
+    <section id="v-app" hidden>
+      <div class="toolbar">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <button class="btn" id="admin-open" hidden>Admin</button>
+          <button class="btn primary" id="add-open">+ Add trip</button>
+        </div>
+      </div>
+      <div class="card banner" id="pw-banner" hidden style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span><b>Create a password</b>so you can sign in with your email and password, without waiting for email links.</span>
+        <button class="btn primary" id="pw-create">Create password</button>
+      </div>
+      <div id="panel"></div>
+    </section>
+  </main>
+  <footer>
+    <button class="fbbtn" id="feedback-open" type="button">💬 Send feedback</button><br>
+    Tracks <b>Delta Air Lines</b> fares only. Fares are round-trip per passenger incl. taxes, as shown on delta.com.<br>
+    FlightFare is an independent service and is not affiliated with Delta Air Lines.<br>
+    <a href="/privacy.html" style="color:inherit">Privacy</a> · <a href="/terms.html" style="color:inherit">Terms</a> · <span id="version"></span>
+  </footer>
+</div>
+
+<dialog id="trip-dialog">
+  <form id="trip-form" novalidate>
+    <h3 id="trip-title">Track a trip</h3>
+    <p class="sub">Delta Air Lines round trips only.</p>
+    <div class="grid2">
+      <div class="field">From<div class="combo" data-for="origin"></div></div>
+      <div class="field">To<div class="combo" data-for="destination"></div></div>
+      <div class="field full" style="position:relative">Travel dates
+        <button type="button" class="datebtn empty" id="datebtn">Choose departure and return dates</button>
+        <input type="hidden" name="travel_date"><input type="hidden" name="return_date">
+        <div class="rangecal" id="rangecal" hidden></div>
+      </div>
+      <label class="field">Cabin
+        <select name="cabin_class">
+          <option value="main_classic" selected>Main Classic</option>
+          <option value="main_basic">Main Basic</option>
+          <option value="main_extra">Main Extra</option>
+          <option value="comfort">Comfort</option>
+          <option value="first">First</option>
+        </select>
+      </label>
+      <label class="field">Alert me below ($)<input type="number" name="alert_below" min="1" step="1" placeholder="optional"></label>
+      <label class="field full">Specific outbound flights (optional)
+        <input name="outbound_flights" placeholder="e.g. DL2547 / DL66" autocomplete="off">
+      </label>
+      <label class="field full" id="pref-field">Which flights should we track?
+        <select name="preference">
+          <option value="cheapest" selected>Cheapest: lowest fare on your dates, any times and connections</option>
+          <option value="fastest">Fastest: shortest total travel time, cheapest among those</option>
+        </select>
+      </label>
+      <label class="field full">Name (optional)<input name="label" maxlength="40" placeholder="e.g. Rome in January"></label>
+    </div>
+    <div class="err" id="trip-err"></div>
+    <div class="actions">
+      <button class="btn" type="button" id="trip-cancel">Cancel</button>
+      <button class="btn primary" type="submit" id="trip-submit">Track trip</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings-dialog">
+  <form id="settings-form" style="padding:22px" novalidate>
+    <h3>Your account</h3>
+    <p class="sub" id="settings-email" style="margin:4px 0 14px"></p>
+    <div class="field">Home airport<div class="combo" id="home-combo-settings" data-for="home_airport"></div></div>
+    <div class="err" id="settings-err"></div>
+    <div class="actions" style="justify-content:space-between">
+      <button class="btn link" type="button" id="settings-password">Change password</button>
+      <span style="display:flex;gap:8px"><button class="btn" type="button" id="settings-cancel">Close</button>
+      <button class="btn primary" type="submit">Save</button></span>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="feedback-dialog">
+  <form id="feedback-form" style="padding:22px" novalidate>
+    <h3>Send feedback</h3>
+    <p class="sub" style="margin:4px 0 12px">Ideas, problems, anything. It goes straight to the person who runs FlightFare.</p>
+    <textarea id="fb-message" maxlength="4000" placeholder="What's on your mind?" aria-label="Your feedback"></textarea>
+    <input type="email" id="fb-email" placeholder="Your email (optional, if you'd like a reply)" autocomplete="email"
+      style="width:100%;margin-top:8px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
+    <div class="err" id="fb-err"></div>
+    <div class="actions">
+      <button class="btn" type="button" id="fb-cancel">Cancel</button>
+      <button class="btn primary" type="submit" id="fb-send">Send</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="confirm-dialog">
+  <form method="dialog" style="padding:22px">
+    <h3>This is a new trip</h3>
+    <p>Changing airports, dates, flights or cabin starts tracking a different trip from scratch. What should happen to <b id="confirm-old"></b>?</p>
+    <div class="actions">
+      <button class="btn" value="cancel">Go back</button>
+      <button class="btn" value="both">Keep tracking both</button>
+      <button class="btn primary" value="replace">Replace it (stop the old one)</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+// flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
+const VERSION = '1.0.0';
+const DEV = location.pathname.startsWith('/dev');
+const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
+const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v){ try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+};
+let trips = [], selectedId = null, chart = null;
+const polling = new Map();   // trip id -> { started, timer }
+
+function el(tag, attrs = {}, ...kids){
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()) if (kid != null) n.append(kid.nodeType ? kid : String(kid));
+  return n;
+}
+function show(view){
+  for (const v of ['signup', 'signin', 'reset', 'welcome', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
+  $('acct').hidden = view !== 'app' && view !== 'welcome';
+  $('signin-top').hidden = view !== 'signup';
+}
+async function api(path, opts = {}){
+  const headers = { 'Content-Type': 'application/json' };
+  const s = store.get(KEY.session);
+  if (s) headers.Authorization = 'Bearer ' + s;
+  let res;
+  try { res = await fetch(API + path, { ...opts, headers }); }
+  catch { throw new Error("Can't reach FlightFare right now. Check your connection and try again."); }
+  if (res.status === 401 && s) { store.set(KEY.session, null); show('signup'); throw new Error('Please sign in again.'); }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Something went wrong. Please try again.');
+  return body;
+}
+
+$('version').textContent = 'v' + VERSION + (DEV ? ' (dev)' : '');
+if (DEV) { $('devflag').hidden = false; document.body.classList.add('dev'); document.title = 'FlightFare (dev)'; }
+
+// ── airports ──
+let AIRPORTS = null, BY_CODE = null;
+const regionName = (() => { try { const d = new Intl.DisplayNames(['en'], { type: 'region' }); return c => { try { return d.of(c); } catch { return c; } }; } catch { return c => c; } })();
+// Lowercase and strip accents so 'curacao' matches 'Curaçao'
+const fold = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+async function loadAirports(){
+  if (AIRPORTS) return;
+  const res = await fetch('/airports.json');
+  AIRPORTS = (await res.json()).map(([code, name, city, country, size, extra = '']) =>
+    ({ code, name, city, country: regionName(country), size, hay: fold(`${city} ${name} ${regionName(country)} ${extra}`) }));
+  BY_CODE = new Map(AIRPORTS.map(a => [a.code, a]));
+}
+function searchAirports(q){
+  q = fold(q.trim());
+  if (!q) return [];
+  const up = q.toUpperCase();
+  const scored = [];
+  for (const a of AIRPORTS) {
+    let s = null;
+    if (a.code === up) s = 0;
+    else if (q.length <= 3 && a.code.startsWith(up)) s = 1;
+    else if (fold(a.city).startsWith(q)) s = 2;
+    else if (a.hay.includes(' ' + q) || a.hay.startsWith(q)) s = 3;
+    else if (q.length >= 3 && a.hay.includes(q)) s = 4;
+    if (s !== null) scored.push([s, a.size, a.city, a]);
+  }
+  scored.sort((x, y) => x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]));
+  return scored.slice(0, 8).map(x => x[3]);
+}
+const airportLabel = a => `${a.city} (${a.code})`;
+
+function makeCombo(host){
+  const name = host.dataset.for;
+  const input = el('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', role: 'combobox',
+    'aria-expanded': 'false', 'aria-autocomplete': 'list', placeholder: 'City or airport code' });
+  const hidden = el('input', { type: 'hidden', name });
+  const list = el('ul', { class: 'combo-list', role: 'listbox', hidden: true });
+  host.replaceChildren(input, hidden, list);
+  let items = [], active = -1;
+  const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+  const choose = a => { hidden.value = a.code; input.value = airportLabel(a); close(); };
+  const paint = () => {
+    list.replaceChildren(...(items.length ? items.map((a, i) => el('li', {
+        role: 'option', 'aria-selected': String(i === active),
+        onmousedown: e => { e.preventDefault(); choose(a); },
+      }, el('b', {}, a.code), a.city, el('small', {}, `${a.name} · ${a.country}`)))
+      : [el('li', { class: 'none' }, 'No airports match')]));
+    list.hidden = false; input.setAttribute('aria-expanded', 'true');
+    list.children[active]?.scrollIntoView({ block: 'nearest' });
+  };
+  input.addEventListener('input', async () => {
+    hidden.value = '';
+    await loadAirports();
+    items = searchAirports(input.value); active = items.length ? 0 : -1;
+    input.value.trim() ? paint() : close();
+  });
+  input.addEventListener('keydown', e => {
+    if (list.hidden) return;
+    if (e.key === 'ArrowDown') { active = Math.min(active + 1, items.length - 1); paint(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { active = Math.max(active - 1, 0); paint(); e.preventDefault(); }
+    else if (e.key === 'Enter' && items[active]) { choose(items[active]); e.preventDefault(); }
+    else if (e.key === 'Escape') { close(); e.preventDefault(); e.stopPropagation(); }
+  });
+  input.addEventListener('blur', () => {
+    close();
+    const typed = BY_CODE?.get(input.value.trim().toUpperCase());
+    if (!hidden.value && typed) choose(typed);
+  });
+  host.set = code => { const a = BY_CODE.get(code); hidden.value = a ? a.code : ''; input.value = a ? airportLabel(a) : ''; };
+  host.focus = () => input.focus();
+}
+document.querySelectorAll('.combo').forEach(makeCombo);
+
+// ── sign-up / sign-in ──
+function sent(what, email){ $('sent-what').textContent = what; $('sent-email').textContent = email; show('sent'); }
+function onSubmit(formId, errId, handler){
+  $(formId).addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.submitter; $(errId).textContent = ''; if (btn) btn.disabled = true;
+    try { await handler(); } catch (err) { $(errId).textContent = err.message; }
+    finally { if (btn) btn.disabled = false; }
+  });
+}
+onSubmit('signup-form', 'signup-err', async () => {
+  const email = $('signup-email').value.trim();
+  await api('/auth/signup', { method: 'POST', body: JSON.stringify({ email }) });
+  sent('To create your account, click the confirmation link we sent to', email);
+});
+onSubmit('signin-form', 'signin-err', async () => {
+  const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({
+    email: $('signin-email').value.trim(), password: $('signin-password').value }) });
+  $('signin-password').value = '';
+  store.set(KEY.session, r.session); await loadApp();
+});
+async function emailMe(mode){
+  $('signin-err').textContent = '';
+  const email = $('signin-email').value.trim();
+  if (!email) { $('signin-err').textContent = 'Enter your email above first.'; $('signin-email').focus(); return; }
+  try {
+    await api('/auth/request', { method: 'POST', body: JSON.stringify({ email, mode }) });
+    sent(mode === 'reset' ? 'We sent a password reset link to' : 'We sent a sign-in link to', email);
+  } catch (err) { $('signin-err').textContent = err.message; }
+}
+$('forgot').addEventListener('click', () => emailMe('reset'));
+$('email-link').addEventListener('click', () => emailMe('signin'));
+let resetToken = null;   // set: reset via emailed link; null: signed-in user creating their first password
+onSubmit('reset-form', 'reset-err', async () => {
+  const password = $('reset-password').value;
+  if (password.length < 8) throw new Error('Use a password with at least 8 characters.');
+  if (resetToken) {
+    const r = await api('/auth/reset', { method: 'POST', body: JSON.stringify({ token: resetToken, password }) });
+    store.set(KEY.session, r.session); resetToken = null;
+  } else {
+    await api('/auth/password', { method: 'POST', body: JSON.stringify({ password }) });
+    const home = comboValue('home-combo-signup');
+    if (home) await api('/me', { method: 'PATCH', body: JSON.stringify({ home_airport: home }) });
+  }
+  $('reset-password').value = '';
+  await loadApp();
+});
+$('pw-create').addEventListener('click', () => askForPassword());
+
+// ── Sign in with Google (Google Identity Services) ──
+const GOOGLE_CLIENT_ID = '185100825624-034e0el6ebd2hhr43tqnsfp0m6ccrk9u.apps.googleusercontent.com';
+function initGoogle(){
+  if (!GOOGLE_CLIENT_ID || !window.google?.accounts?.id) return;
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, ux_mode: 'popup', auto_select: false,
+    callback: async ({ credential }) => {
+      const err = $('v-signin').hidden ? $('signup-err') : $('signin-err');
+      err.textContent = '';
+      try {
+        const r = await api('/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
+        store.set(KEY.session, r.session); await loadApp();
+      } catch (e) { err.textContent = e.message; }
+    } });
+  for (const [id, text] of [['g-signup', 'signup_with'], ['g-signin', 'signin_with']])
+    google.accounts.id.renderButton($(id), { theme: 'outline', size: 'large', shape: 'pill', text, width: 300 });
+  document.querySelectorAll('.google-area').forEach(a => a.hidden = false);
+}
+// Google's script loads async; the window load event waits for it
+if (document.readyState === 'complete') initGoogle(); else window.addEventListener('load', initGoogle);
+function askForPassword(){
+  const changing = ME?.has_password;
+  $('reset-title').textContent = changing ? 'Choose a new password' : 'Create your password';
+  $('reset-sub').textContent = changing ? "You'll use it next time you sign in." : "You'll use it with your email to sign in next time.";
+  $('signup-home').hidden = !!(ME?.home_airport) || changing;
+  loadAirports();
+  $('reset-password').placeholder = 'Password (8+ characters)';
+  show('reset'); $('reset-password').focus();
+}
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
+  show(b.dataset.go); $(b.dataset.go + '-email').focus();
+}));
+$('signin-top').addEventListener('click', () => { show('signin'); $('signin-email').focus(); });
+$('sent-back').addEventListener('click', () => show('signup'));
+$('logout').addEventListener('click', async () => {
+  try { await api('/auth/logout', { method: 'POST' }); } catch {}
+  store.set(KEY.session, null); show('signup');
+});
+async function verify(token){
+  show('verify');
+  history.replaceState(null, '', location.pathname);
+  try {
+    const r = await api('/auth/verify', { method: 'POST', body: JSON.stringify({ token }) });
+    store.set(KEY.session, r.session);
+    if (r.needs_password) return askForPassword();
+    await loadApp();
+  } catch (err) {
+    $('verify-title').textContent = "That link didn't work";
+    $('verify-msg').replaceChildren(err.message + ' ', el('a', { href: './' }, 'Get a new link'));
+  }
+}
+
+// ── dashboard ──
+let ME = null;
+const comboValue = id => $(id).querySelector('input[type=hidden]').value;
+async function saveHome(code){
+  const r = await api('/me', { method: 'PATCH', body: JSON.stringify({ home_airport: code }) });
+  ME.home_airport = r.home_airport;
+}
+async function loadApp(){
+  const [me, list] = await Promise.all([api('/me'), api('/trips')]);
+  ME = me;
+
+  $('acct-email').textContent = me.email;
+  $('admin-open').hidden = !me.is_admin;
+  $('pw-banner').hidden = me.has_password || me.has_google;
+  trips = list;
+  const remembered = Number(store.get(KEY.trip));
+  const firstActive = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
+  selectedId = trips.some(t => t.id === remembered) ? remembered : firstActive;
+  trips.filter(t => t.check_pending).forEach(t => watchCheck(t.id));
+  // First visit without a home airport (new sign-ups, Google sign-ins, older accounts): ask once
+  if (!me.home_airport && store.get(KEY.session + '-home-skip') !== '1') {
+    await loadAirports();
+    show('welcome'); $('home-combo-welcome').focus();
+    return;
+  }
+  show('app'); render();
+}
+function select(id){ selectedId = id; store.set(KEY.trip, id); render(); }
+function render(){
+  $('admin-open').classList.toggle('primary', selectedId === 'admin');
+  if (selectedId === 'admin') {
+    $('tabs').replaceChildren(...trips.map(t => el('button', { class: 'tab', role: 'tab', 'aria-selected': 'false', onclick: () => select(t.id) }, t.label)));
+    if (chart) { chart.destroy(); chart = null; }
+    return renderAdmin();
+  }
+  const active = trips.filter(t => !t.archived), archived = trips.filter(t => t.archived);
+  const current = trips.find(x => x.id === selectedId);
+  const onArchived = selectedId === 'archived' || current?.archived;
+  $('tabs').replaceChildren(...active.map(t => el('button', {
+    class: 'tab', role: 'tab', 'aria-selected': String(t.id === selectedId), onclick: () => select(t.id),
+  }, t.label)), archived.length ? el('button', { class: 'tab archived-tab', role: 'tab', 'aria-selected': String(onArchived),
+    onclick: () => select('archived') }, `Archived (${archived.length})`) : null);
+  if (chart) { chart.destroy(); chart = null; }
+  if (selectedId === 'archived') { $('panel').replaceChildren(archivedList(archived)); return; }
+  const t = current;
+  $('panel').replaceChildren(t ? tripView(t) : active.length ? (select(active[0].id), '') : emptyView());
+  if (t && t.history.length) drawChart(t);
+}
+function replaceTrip(updated){
+  const i = trips.findIndex(x => x.id === updated.id);
+  if (i >= 0) trips[i] = { ...trips[i], ...updated }; else trips.push(updated);
+  trips.sort((a, b) => a.travel_date.localeCompare(b.travel_date) || a.id - b.id);
+}
+
+// Poll a newly added trip until the home-PC worker has priced it
+function watchCheck(id){
+  if (polling.has(id)) return;
+  const job = { started: Date.now() };
+  polling.set(id, job);
+  const tick = async () => {
+    try {
+      const t = await api(`/trips/${id}`);
+      replaceTrip(t);
+      if (!t.check_pending) { polling.delete(id); if (id === selectedId) render(); return; }
+    } catch { }
+    if (!job.slow && Date.now() - job.started > 8 * 60e3) { job.slow = true; if (id === selectedId) render(); }
+    job.timer = setTimeout(tick, 8000);
+  };
+  job.timer = setTimeout(tick, 5000);
+}
+
+function archivedList(list){
+  if (!list.length) return el('div', { class: 'card empty' }, el('h2', {}, 'Nothing archived'));
+  return el('div', {},
+    el('div', { class: 'trip-head' }, el('h2', {}, 'Archived trips'), el('span', { class: 'sub' }, 'Prices are no longer checked for these.')),
+    el('div', { class: 'arch-list' }, ...list.map(t => {
+      const last = t.history[t.history.length - 1];
+      return el('div', { class: 'card arch-item' },
+        el('div', {}, el('b', {}, t.label),
+          el('div', { class: 'meta' }, `${t.origin} → ${t.destination} · ${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`
+            + (last ? ` · last price ${money(last.price)}` : '') + (t.auto_archived ? ' · departed' : ''))),
+        el('div', { class: 'acts' }, el('button', { class: 'btn', onclick: () => select(t.id) }, 'View history'), deleteButton(t)));
+    })));
+}
+function emptyView(){
+  return el('div', { class: 'card empty' },
+    el('h2', {}, 'No trips yet'),
+    el('p', {}, "Add a Delta trip and you'll see its price in a minute or two."),
+    el('button', { class: 'btn primary', onclick: () => openTrip() }, '+ Add your first trip'));
+}
+const money = v => '$' + Math.round(v).toLocaleString();
+const when = iso => new Date(iso + 'Z');
+const fmtDate = d => new Date(d + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const CABIN = { main_basic: 'Main Basic', main_classic: 'Main Classic', main_extra: 'Main Extra', comfort: 'Comfort', first: 'First' };
+const PROBLEMS = {
+  flights_not_found: "Those flights aren't available",
+  cabin_unavailable: 'That cabin isn’t available',
+  no_flights: 'No Delta flights found',
+  airport_not_served: 'Delta doesn’t fly there',
+};
+
+function tripView(t){
+  const bits = [`${t.origin} → ${t.destination}`, `${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`, CABIN[t.cabin_class] || t.cabin_class];
+  bits.push(t.outbound_flights || (t.preference === 'fastest' ? 'Fastest flights' : 'Cheapest flights'));
+  const h = t.history;
+  const head = el('div', { class: 'trip-head' }, el('h2', {}, t.label),
+    el('div', { class: 'right' }, el('span', { class: 'sub' }, bits.join('  ·  ')),
+      el('button', { class: 'btn', onclick: () => openTrip(t) }, 'Edit')));
+  const problem = PROBLEMS[t.status] && !t.check_pending
+    ? el('div', { class: 'card banner' }, el('b', {}, PROBLEMS[t.status]),
+        `${t.status_detail || ''} Check the details with Edit, or remove this trip.`)
+    : null;
+  const settings = t.archived ? archivedSettings(t) : settingsView(t);
+  const archivedNote = t.archived
+    ? el('div', { class: 'card banner archived-banner' }, el('b', {}, 'Archived'), 'Prices are no longer being checked for this trip.')
+    : null;
+  if (t.archived && !h.length) return el('div', {}, head, archivedNote, settings);
+  if (!h.length) {
+    const job = polling.get(t.id);
+    let box;
+    if (t.check_pending && !job?.slow) {
+      box = el('div', { class: 'card pending checking' }, 'Checking Delta for the current fare…',
+        el('span', { class: 'hint' }, 'This usually takes a minute or two. You can leave this page; the price will be here when you come back.'));
+    } else if (t.check_pending) {
+      box = el('div', { class: 'card pending' }, 'The first check is taking longer than usual.',
+        el('span', { class: 'hint' }, "We'll keep trying, and it will also be checked at the next scheduled time (8 AM and 6 PM)."));
+    } else if (!problem) {
+      box = el('div', { class: 'card pending' }, 'Waiting for the first price check.',
+        el('span', { class: 'hint' }, 'Prices are checked every morning and evening.'));
+    }
+    return el('div', {}, head, problem, box, settings);
+  }
+  const prices = h.map(r => r.price), last = h[h.length - 1], prev = h[h.length - 2];
+  const delta = prev ? last.price - prev.price : 0;
+  const chg = delta > 0 ? ['▲ ' + money(delta), 'up'] : delta < 0 ? ['▼ ' + money(-delta), 'down'] : ['$0', 'flat'];
+  const stat = (k, v, cls = '') => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k), el('div', { class: 'v ' + cls }, v));
+  const checked = when(last.scraped_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return el('div', {}, head, archivedNote || problem,
+    el('div', { class: 'stats' },
+      stat('Latest', money(last.price)), stat('Change', chg[0], chg[1]),
+      stat('Lowest seen', money(Math.min(...prices)), 'lo'), stat('Highest seen', money(Math.max(...prices)), 'hi')),
+    el('div', { class: 'card chart' }, el('canvas', { id: 'chart', 'aria-label': `Price history for ${t.label}`, role: 'img' })),
+    el('p', { class: 'sub', style: 'margin:-4px 0 10px 2px' }, `Last priced ${checked}`),
+    historyTable(h),
+    settings);
+}
+function historyTable(h){
+  const rows = [...h].reverse().map(r => {
+    const d = when(r.scraped_at);
+    return el('tr', {},
+      el('td', {}, d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })),
+      el('td', {}, el('b', {}, money(r.price))),
+      el('td', {}, r.notes || ''), el('td', {}, r.flights || '—'),
+      el('td', {}, (r.depart_time || '—') + ' → ' + (r.arrive_time || '—')));
+  });
+  return el('details', { class: 'hist' },
+    el('summary', {}, `Price history · ${h.length} checks`),
+    el('div', { class: 'card tablewrap' }, el('table', {},
+      el('thead', {}, el('tr', {}, ['Checked', 'Price', 'Fare', 'Flights', 'Times'].map(x => el('th', {}, x)))),
+      el('tbody', {}, rows))));
+}
+function settingsView(t){
+  const input = el('input', { type: 'number', min: '1', step: '1', value: t.alert_below ?? '', placeholder: 'no target', 'aria-label': 'Alert threshold in dollars' });
+  const msg = el('span', { class: 'sub' });
+  const form = el('form', { onsubmit: async e => {
+      e.preventDefault(); msg.textContent = '';
+      try {
+        replaceTrip(await api(`/trips/${t.id}`, { method: 'PATCH', body: JSON.stringify({ alert_below: input.value ? Number(input.value) : 0 }) }));
+        msg.textContent = 'Saved.';
+      } catch (err) { msg.textContent = err.message; }
+    } },
+    el('label', {}, 'Alert me below $ ', input), el('button', { class: 'btn', type: 'submit' }, 'Save'), msg);
+  const archive = el('button', { class: 'btn', onclick: async () => {
+      if (!confirm(`Archive ${t.label}? We'll stop checking its price, but keep it and its price history under Archived.`)) return;
+      try { replaceTrip(await api(`/trips/${t.id}/archive`, { method: 'POST' })); select('archived'); } catch (err) { alert(err.message); }
+    } }, 'Archive');
+  return el('div', { class: 'card settings' }, form,
+    el('div', { style: 'display:flex;gap:8px' }, archive, deleteButton(t)),
+    el('p', { class: 'note' }, "We also email you whenever this trip's price changes."));
+}
+function deleteButton(t){
+  return el('button', { class: 'btn link danger', onclick: async () => {
+    if (!confirm(`Delete ${t.label} and its price history? This can't be undone.`)) return;
+    try { await removeTrip(t.id); render(); } catch (err) { alert(err.message); }
+  } }, 'Delete');
+}
+function archivedSettings(t){
+  const restore = t.auto_archived ? null : el('button', { class: 'btn primary', onclick: async () => {
+      try { replaceTrip(await api(`/trips/${t.id}/restore`, { method: 'POST' })); select(t.id); } catch (err) { alert(err.message); }
+    } }, 'Restore tracking');
+  return el('div', { class: 'card settings' },
+    el('span', { class: 'sub' }, t.auto_archived ? 'This trip was archived automatically because its departure date has passed.'
+                                                 : `Archived ${short(t.archived_at)}. Restore it to start checking prices again.`),
+    el('div', { style: 'display:flex;gap:8px' }, restore, deleteButton(t)));
+}
+async function removeTrip(id){
+  await api(`/trips/${id}`, { method: 'DELETE' });
+  trips = trips.filter(x => x.id !== id);
+  if (selectedId === id) selectedId = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
+}
+function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function drawChart(t){
+  const pts = t.history.map(r => ({ x: when(r.scraped_at).getTime(), y: r.price }));
+  const lo = Math.min(...pts.map(p => p.y)), hi = Math.max(...pts.map(p => p.y)), pad = Math.max(25, (hi - lo) * 0.15);
+  const ink = css('--muted'), grid = css('--grid'), line = css('--line');
+  const fmtTick = ms => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const single = pts.length === 1;
+  chart = new Chart($('chart'), {
+    type: 'line',
+    data: { datasets: [{ data: pts, borderColor: line, backgroundColor: css('--fill'), fill: 'start',
+      borderWidth: 2.5, tension: 0.35, cubicInterpolationMode: 'monotone', clip: false,
+      // Highest price in red, lowest in blue, matching the stat boxes
+      pointRadius: pts.map(p => single ? 6 : (p.y === hi || p.y === lo) ? 6 : 3.5), pointHoverRadius: 7,
+      pointBackgroundColor: pts.map(p => lo === hi ? line : p.y === hi ? css('--hi') : p.y === lo ? css('--lo') : line),
+      pointBorderColor: css('--card'), pointBorderWidth: 2 }] },
+    options: {
+      maintainAspectRatio: false, animation: false, layout: { padding: { left: 6, right: 10 } },
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      plugins: { legend: { display: false }, tooltip: {
+        displayColors: false, padding: 10,
+        callbacks: {
+          title: items => new Date(items[0].parsed.x).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+          label: item => money(item.parsed.y),
+        } } },
+      scales: {
+        x: { type: 'linear', min: single ? pts[0].x - 864e5 : pts[0].x, max: single ? pts[0].x + 864e5 : pts[pts.length - 1].x,
+             grid: { display: false }, border: { color: grid }, ticks: { color: ink, maxTicksLimit: 7, callback: fmtTick } },
+        y: { min: Math.floor((lo - pad) / 25) * 25, max: Math.ceil((hi + pad) / 25) * 25,
+             grid: { color: grid }, border: { display: false },
+             ticks: { color: ink, maxTicksLimit: 6, callback: v => money(v) } },
+      },
+    },
+  });
+}
+
+// ── home airport & account settings ──
+$('welcome-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const code = comboValue('home-combo-welcome');
+  if (!code) { $('welcome-err').textContent = 'Pick your airport from the list, or skip for now.'; return; }
+  try { await saveHome(code); show('app'); render(); } catch (err) { $('welcome-err').textContent = err.message; }
+});
+$('welcome-skip').addEventListener('click', () => { store.set(KEY.session + '-home-skip', '1'); show('app'); render(); });
+$('acct-email').addEventListener('click', async () => {
+  await loadAirports();
+  $('settings-email').textContent = ME.email; $('settings-err').textContent = '';
+  $('home-combo-settings').set(ME.home_airport || '');
+  $('settings-dialog').showModal();
+});
+$('settings-cancel').addEventListener('click', () => $('settings-dialog').close());
+$('settings-password').addEventListener('click', () => { $('settings-dialog').close(); askForPassword(); });
+$('settings-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  try { await saveHome(comboValue('home-combo-settings')); $('settings-dialog').close(); }
+  catch (err) { $('settings-err').textContent = err.message; }
+});
+
+// ── feedback ──
+$('feedback-open').addEventListener('click', () => {
+  $('fb-err').textContent = ''; $('fb-send').disabled = false; $('fb-send').textContent = 'Send';
+  $('fb-email').hidden = !!ME && !$('v-app').hidden;   // signed-in users are identified automatically
+  $('feedback-dialog').showModal(); $('fb-message').focus();
+});
+$('fb-cancel').addEventListener('click', () => $('feedback-dialog').close());
+$('feedback-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const message = $('fb-message').value.trim();
+  if (!message) { $('fb-err').textContent = 'Please write a message.'; return; }
+  $('fb-err').textContent = ''; $('fb-send').disabled = true;
+  try {
+    await api('/feedback', { method: 'POST', body: JSON.stringify({ message, email: $('fb-email').hidden ? '' : $('fb-email').value.trim(),
+      page: $('v-app').hidden ? 'home' : 'dashboard' }) });
+    $('fb-message').value = ''; $('fb-send').textContent = 'Sent. Thank you!';
+    setTimeout(() => $('feedback-dialog').close(), 1200);
+  } catch (err) { $('fb-err').textContent = err.message; $('fb-send').disabled = false; }
+});
+
+// ── admin ──
+$('admin-open').addEventListener('click', () => { selectedId = 'admin'; render(); });
+const ago = iso => {
+  if (!iso) return '—';
+  const mins = Math.round((Date.now() - when(iso)) / 60000);
+  return mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} d ago`;
+};
+const short = iso => iso ? when(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+const STATUS_TEXT = { flights_not_found: 'flights not offered', cabin_unavailable: 'cabin unavailable', no_flights: 'no flights', airport_not_served: 'airport not served', error: 'temporary error' };
+
+async function renderAdmin(){
+  $('panel').replaceChildren(el('div', { class: 'card pending checking' }, 'Loading admin stats…'));
+  let stats, activity, users, feedback;
+  try { [stats, activity, users, feedback] = await Promise.all([api('/admin/stats'), api('/admin/activity'), api('/admin/users'), api('/admin/feedback')]); }
+  catch (err) { $('panel').replaceChildren(el('div', { class: 'card banner' }, err.message)); return; }
+  if (selectedId !== 'admin') return;
+  const tile = (k, v, note, cls = '') => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k),
+    el('div', { class: 'v ' + cls }, v), note ? el('div', { class: 'note' }, note) : null);
+  const c24 = stats.checks_24h, c7 = stats.checks_7d;
+  const table = (heads, rows) => el('div', { class: 'card tablewrap' }, el('table', {},
+    el('thead', {}, el('tr', {}, heads.map(h => el('th', {}, h)))), el('tbody', {}, rows)));
+  const userRows = users.map(u => {
+    const btn = el('button', { class: 'btn', disabled: u.email === ME.email && u.is_admin ? true : false, onclick: async () => {
+      btn.disabled = true;
+      try { await api(`/admin/users/${u.id}/admin`, { method: 'POST', body: JSON.stringify({ is_admin: !u.is_admin }) }); renderAdmin(); }
+      catch (err) { alert(err.message); btn.disabled = false; }
+    } }, u.is_admin ? 'Remove admin' : 'Make admin');
+    return el('tr', {},
+      el('td', {}, el('button', { class: 'userlink', onclick: () => renderUserDetail(u.id) }, u.email),
+        u.is_admin ? ' ' : null, u.is_admin ? el('span', { class: 'pill ok' }, 'admin') : null),
+      el('td', {}, short(u.created_at)), el('td', {}, ago(u.last_login_at)), el('td', {}, u.trips),
+      el('td', {}, el('span', { class: 'pill ' + (u.confirmed ? 'ok' : 'bad') }, u.confirmed ? 'confirmed' : 'unconfirmed')),
+      el('td', {}, u.has_password ? 'yes' : '—'), el('td', {}, btn));
+  });
+  const checkRows = activity.checks.map(r => el('tr', {},
+    el('td', {}, short(r.scraped_at)), el('td', {}, r.label || r.trip_id),
+    el('td', {}, r.price_usd != null ? el('b', {}, money(r.price_usd)) : el('span', { class: 'pill bad' }, STATUS_TEXT[(r.notes || '').replace('check failed: ', '')] || 'failed')),
+    el('td', {}, r.flights || '—'), el('td', {}, r.source === 'on-demand' ? 'instant' : 'scheduled')));
+  const problems = stats.problems.length
+    ? stats.problems.map(p => `${p.routes} ${STATUS_TEXT[p.status] || p.status}`).join(', ') : 'none';
+  $('panel').replaceChildren(el('div', {},
+    el('div', { class: 'trip-head' }, el('h2', {}, 'Admin'), el('span', { class: 'sub' }, `Updated ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`)),
+    el('div', { class: 'admin-grid' },
+      tile('Users', stats.users.total, `${stats.users.confirmed} confirmed · ${stats.users.new_7d} new this week`),
+      tile('Active (7 days)', stats.users.active_7d, `${stats.users.with_password} with passwords`),
+      tile('Trips tracked', stats.trips.trips, `${stats.trips.routes} distinct routes · ${stats.trips.users_with_trips} users`),
+      tile('Checks (24 h)', c24.scheduled.ok + c24.on_demand.ok, `${c24.on_demand.ok} instant · ${c24.scheduled.failed + c24.on_demand.failed} failed`, (c24.scheduled.failed + c24.on_demand.failed) ? 'hi' : ''),
+      tile('Checks (7 days)', c7.scheduled.ok + c7.on_demand.ok, `${c7.scheduled.failed + c7.on_demand.failed} failed`),
+      tile('Page views today', stats.views_today, `${Object.values(stats.views_14d).reduce((a, b) => a + b, 0)} in the last 14 days`)),
+    el('div', { class: 'card settings' },
+      el('span', {}, el('b', {}, 'System: '), `last scheduled check ${ago(stats.last_scheduled)} · last instant check ${ago(stats.last_on_demand)} · ${stats.queue} waiting in queue · trips with problems: ${problems}`)),
+    el('h3', { class: 'admin-h' }, `Feedback (${feedback.length})`),
+    feedback.length
+      ? el('div', { class: 'arch-list' }, ...feedback.slice(0, 20).map(f => el('div', { class: 'card fb-item' },
+          el('div', { class: 'meta' }, `${short(f.created_at)} · ${f.email || 'anonymous'} · from ${f.page || 'site'}`),
+          el('p', {}, f.message))))
+      : el('div', { class: 'card pending' }, 'No feedback yet.'),
+    el('h3', { class: 'admin-h' }, 'Users'),
+    table(['Email', 'Joined', 'Last sign-in', 'Trips', 'Email', 'Password', ''], userRows),
+    el('h3', { class: 'admin-h' }, 'Recent price checks'),
+    table(['When', 'Trip', 'Result', 'Flights', 'Type'], checkRows)));
+}
+
+async function renderUserDetail(id){
+  let u;
+  try { u = await api(`/admin/users/${id}`); } catch (err) { alert(err.message); return; }
+  const tile = (k, v, note) => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v),
+    note ? el('div', { class: 'note' }, note) : null);
+  const priced = u.trips.filter(t => t.latest != null);
+  const rows = u.trips.map(t => el('tr', {},
+    el('td', {}, el('b', {}, t.label), el('div', { class: 'sub' }, `${t.origin} → ${t.destination}`)),
+    el('td', {}, `${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`),
+    el('td', {}, t.outbound_flights || (t.preference === 'fastest' ? 'Fastest' : 'Cheapest')),
+    el('td', {}, t.latest != null ? el('b', {}, money(t.latest)) : '—'),
+    el('td', {}, t.lowest != null ? el('span', { style: 'color:var(--lo);font-weight:650' }, money(t.lowest)) : '—'),
+    el('td', {}, t.highest != null ? el('span', { style: 'color:var(--hi);font-weight:650' }, money(t.highest)) : '—'),
+    el('td', {}, t.checks),
+    el('td', {}, t.status && t.status !== 'ok' ? el('span', { class: 'pill bad' }, STATUS_TEXT[t.status] || t.status)
+                 : (t.status || t.checks) ? el('span', { class: 'pill ok' }, 'ok') : 'waiting'),
+    el('td', {}, t.alert_below ? money(t.alert_below) : '—')));
+  $('panel').replaceChildren(el('div', {},
+    el('div', { class: 'trip-head' },
+      el('h2', {}, u.email),
+      el('div', { class: 'right' }, u.is_admin ? el('span', { class: 'pill ok' }, 'admin') : null,
+        el('button', { class: 'btn', onclick: () => renderAdmin() }, '← Back to admin'))),
+    el('div', { class: 'admin-grid' },
+      tile('Joined', short(u.created_at), u.email_verified_at ? 'email confirmed' : 'email not confirmed'),
+      tile('Last sign-in', ago(u.last_login_at), `${u.active_sessions} signed-in device(s)`),
+      tile('Trips', u.trips.length, `${priced.length} priced`),
+      tile('Password', u.has_password ? 'Set' : 'None', u.has_password ? '' : 'signs in by email link')),
+    el('h3', { class: 'admin-h' }, 'Trips'),
+    u.trips.length
+      ? el('div', { class: 'card tablewrap' }, el('table', {},
+          el('thead', {}, el('tr', {}, ['Trip', 'Dates', 'Flights', 'Latest', 'Lowest', 'Highest', 'Checks', 'Status', 'Alert below'].map(h => el('th', {}, h)))),
+          el('tbody', {}, rows)))
+      : el('div', { class: 'card pending' }, 'No trips yet.')));
+}
+
+// ── add / edit trip ──
+const dlg = $('trip-dialog'), form = $('trip-form');
+const combos = { origin: document.querySelector('.combo[data-for=origin]'), destination: document.querySelector('.combo[data-for=destination]') };
+let editing = null;
+const normFlights = s => (s.toUpperCase().match(/[A-Z0-9]{2}\s*\d{1,4}/g) || []).map(f => f.replace(/\s+/g, '').replace(/^([A-Z0-9]{2})0*(\d)/, '$1$2')).join(' / ');
+const DEFINING = ['origin', 'destination', 'travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'preference'];
+const syncPref = () => { $('pref-field').hidden = !!form.outbound_flights.value.trim(); };
+form.outbound_flights.addEventListener('input', syncPref);
+
+async function openTrip(t = null){
+  editing = t;
+  form.reset(); $('trip-err').textContent = '';
+  $('trip-title').textContent = t ? 'Edit trip' : 'Track a trip';
+  $('trip-submit').textContent = t ? 'Save changes' : 'Track trip';
+  await loadAirports();
+  combos.origin.set(t?.origin || (t ? '' : ME?.home_airport || '')); combos.destination.set(t?.destination || '');
+  if (t) {
+    for (const k of ['travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'preference', 'label']) form[k].value = t[k] ?? '';
+    form.alert_below.value = t.alert_below ?? '';
+  }
+  syncPref();
+  range.load(t?.travel_date || '', t?.return_date || '');
+  dlg.showModal();
+  if (!t) (ME?.home_airport ? combos.destination : combos.origin).focus();
+}
+$('add-open').addEventListener('click', () => openTrip());
+$('trip-cancel').addEventListener('click', () => dlg.close());
+// ── date range picker: click departure then return, or drag across; return can't precede departure ──
+const range = (() => {
+  const btn = $('datebtn'), cal = $('rangecal');
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const pretty = s => parse(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  let start = '', end = '', hover = '', view = null, downAt = '';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const first = iso(new Date(today.getTime() + 864e5)), last = iso(new Date(today.getTime() + 330 * 864e5));
+  const label = () => {
+    btn.classList.toggle('empty', !start);
+    btn.textContent = start && end ? `${pretty(start)}  →  ${pretty(end)}` : start ? `${pretty(start)}  →  pick a return date` : 'Choose departure and return dates';
+    form.travel_date.value = start; form.return_date.value = end;
+  };
+  // What to highlight: a drag in progress, a chosen range, or a departure plus the hovered return
+  const shown = () => {
+    if (downAt && hover && hover !== downAt) return downAt < hover ? [downAt, hover] : [hover, downAt];
+    if (downAt) return [downAt, ''];
+    return [start, end || (start && hover > start ? hover : '')];
+  };
+  const month = (y, m) => {
+    const box = el('div', { class: 'month' }, el('h4', {}, new Date(y, m, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })));
+    const grid = el('div', { class: 'grid' }, ...['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => el('div', { class: 'dow' }, d)));
+    for (let i = 0; i < new Date(y, m, 1).getDay(); i++) grid.append(el('div'));
+    const [lo, hi] = shown();
+    for (let d = 1; d <= new Date(y, m + 1, 0).getDate(); d++) {
+      const v = iso(new Date(y, m, d));
+      const cls = ['day', v === lo && 'start', v === hi && 'end', lo && hi && v > lo && v < hi && 'inrange'].filter(Boolean).join(' ');
+      grid.append(el('button', { type: 'button', class: cls, 'data-v': v, disabled: v < first || v > last,
+        'aria-label': parse(v).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) }, d));
+    }
+    box.append(grid); return box;
+  };
+  const paint = () => {
+    const a = new Date(view.getFullYear(), view.getMonth(), 1), b = new Date(a.getFullYear(), a.getMonth() + 1, 1);
+    cal.replaceChildren(
+      el('div', { class: 'nav' },
+        el('button', { type: 'button', 'aria-label': 'Previous month', onclick: () => { view = new Date(a.getFullYear(), a.getMonth() - 1, 1); paint(); } }, '‹'),
+        el('span', {}, !start || end ? 'Pick your departure date' : 'Now pick your return date'),
+        el('button', { type: 'button', 'aria-label': 'Next month', onclick: () => { view = new Date(a.getFullYear(), a.getMonth() + 1, 1); paint(); } }, '›')),
+      el('div', { class: 'months' }, month(a.getFullYear(), a.getMonth()), month(b.getFullYear(), b.getMonth())),
+      el('div', { class: 'hint' }, 'Tip: you can also drag from your departure date to your return date.'));
+  };
+  const finish = (a, b) => { start = a; end = b; hover = ''; label(); if (b) cal.hidden = true; else paint(); };
+  const dayAt = e => {
+    const t = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.day');
+    return t && !t.disabled ? t.dataset.v : '';
+  };
+  cal.addEventListener('pointerdown', e => {
+    const v = dayAt(e); if (!v) return;
+    downAt = v; hover = v; paint(); e.preventDefault();
+  });
+  cal.addEventListener('pointermove', e => {
+    const v = dayAt(e); if (!v || v === hover) return;
+    hover = v; if (downAt || (start && !end)) paint();
+  });
+  window.addEventListener('pointerup', e => {
+    if (!downAt) return;
+    const from = downAt, to = dayAt(e) || hover;
+    downAt = '';
+    if (to && to !== from) return finish(from < to ? from : to, from < to ? to : from);   // dragged across a range
+    // A tap: first tap sets departure; a later tap sets return, or restarts if it's not after departure
+    if (!start || end || from <= start) finish(from, ''); else finish(start, from);
+  });
+  btn.addEventListener('click', () => {
+    if (!cal.hidden) { cal.hidden = true; return; }
+    view = start ? parse(start) : new Date(today.getTime() + 864e5);
+    cal.hidden = false; paint();
+  });
+  // Capture phase: runs before the calendar redraws on press, so presses inside still count as inside
+  document.addEventListener('pointerdown', e => { if (!cal.hidden && !cal.contains(e.target) && e.target !== btn) cal.hidden = true; }, true);
+  return { load(a, b){ start = a; end = b; hover = ''; cal.hidden = true; label(); } };
+})();
+
+function readForm(){
+  const f = Object.fromEntries(new FormData(form));
+  if (!f.origin) throw new Error('Pick the departure airport from the list.');
+  if (!f.destination) throw new Error('Pick the destination airport from the list.');
+  if (f.origin === f.destination) throw new Error('The origin and destination must be different airports.');
+  if (!f.travel_date || !f.return_date) throw new Error('Choose both travel dates.');
+  if (f.return_date <= f.travel_date) throw new Error('The return date must be after the departure date.');
+  if (f.outbound_flights.trim()) {
+    const cleaned = f.outbound_flights.toUpperCase().replace(/[A-Z0-9]{2}\s*\d{1,4}/g, '').replace(/[\s\/,+&-]/g, '');
+    if (cleaned || !normFlights(f.outbound_flights)) throw new Error('Enter flight numbers like DL2547 / DL66, or leave it blank.');
+  }
+  const outbound = normFlights(f.outbound_flights);
+  return { ...f, outbound_flights: outbound, preference: outbound ? 'cheapest' : f.preference, label: f.label.trim(),
+           alert_below: f.alert_below ? Number(f.alert_below) : null };
+}
+function askReplaceOrBoth(t){
+  return new Promise(resolve => {
+    const c = $('confirm-dialog');
+    $('confirm-old').textContent = t.label;
+    c.addEventListener('close', () => resolve(c.returnValue || 'cancel'), { once: true });
+    c.returnValue = ''; c.showModal();
+  });
+}
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  $('trip-err').textContent = '';
+  let body;
+  try { body = readForm(); } catch (err) { $('trip-err').textContent = err.message; return; }
+  $('trip-submit').disabled = true;
+  try {
+    if (!editing) {
+      const t = await api('/trips', { method: 'POST', body: JSON.stringify(body) });
+      replaceTrip(t); dlg.close(); select(t.id);
+      if (t.check_pending) watchCheck(t.id);
+      return;
+    }
+    const changed = DEFINING.some(k => String(body[k] ?? '') !== String(editing[k] ?? ''));
+    if (!changed) {
+      const t = await api(`/trips/${editing.id}`, { method: 'PATCH',
+        body: JSON.stringify({ label: body.label || editing.label, alert_below: body.alert_below ?? 0 }) });
+      replaceTrip(t); dlg.close(); render();
+      return;
+    }
+    const choice = await askReplaceOrBoth(editing);
+    if (choice === 'cancel') return;
+    if (!body.label || body.label === editing.label) body.label = choice === 'both' ? '' : editing.label;
+    const t = await api('/trips', { method: 'POST', body: JSON.stringify(body) });
+    if (choice === 'replace') await removeTrip(editing.id);
+    replaceTrip(t); dlg.close(); select(t.id);
+    if (t.check_pending) watchCheck(t.id);
+  } catch (err) { $('trip-err').textContent = err.message; }
+  finally { $('trip-submit').disabled = false; }
+});
+
+// ── boot ──
+async function boot(){
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get('reset')) {
+    resetToken = params.get('reset');
+    history.replaceState(null, '', location.pathname);
+    show('reset'); $('reset-password').focus(); return;
+  }
+  const token = params.get('login');
+  if (token) return verify(token);
+  if (!store.get(KEY.session)) return show('signup');
+  try { await loadApp(); } catch { show('signup'); }
+}
+// A sign-in link opened in a tab already on this page changes only the hash, which doesn't reload it
+window.addEventListener('hashchange', boot);
+boot();
+fetch(API + '/hit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: 'home' }) }).catch(() => {});
+</script>
+</body>
+</html>
