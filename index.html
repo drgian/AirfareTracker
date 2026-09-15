@@ -95,6 +95,11 @@ dialog h3{margin-bottom:4px}
 .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 @media (max-width:560px){#acct-email{display:none}}
 .settings .note{flex-basis:100%;color:var(--muted);font-size:.82rem;margin-top:-4px}
+.switch{margin-top:14px;font-size:.9rem;color:var(--muted)}
+.switch button{font-weight:650;color:var(--accent);padding:0 2px}
+.signin-card{max-width:440px;margin:10vh auto 0;padding:30px 28px;text-align:center}
+.signin-card h2{color:var(--navy);margin-bottom:6px}
+.signin-card p.sub{margin-bottom:18px}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -122,6 +127,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
   <header class="top">
     <a class="brand" href="./">✈ FlightFare</a>
     <div class="acct" id="acct" hidden><span id="acct-email"></span><button class="btn link" id="logout">Sign out</button></div>
+    <button class="btn" id="signin-top" hidden>Sign in</button>
   </header>
 
   <main>
@@ -136,11 +142,25 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         </form>
         <div class="err" id="signup-err"></div>
         <p class="fine">No password. We'll email you a link that signs you in.</p>
+        <p class="switch">Already a member? <button class="btn link" data-go="signin">Sign in</button></p>
       </div>
       <div class="how">
         <div class="card"><b>1. Add a trip</b><span>Airports, dates, and optionally the exact Delta flights you want.</span></div>
         <div class="card"><b>2. We watch it</b><span>You'll see today's fare in a minute or two, then we check every morning and evening.</span></div>
         <div class="card"><b>3. Get an email</b><span>Whenever the price changes, or drops below your target.</span></div>
+      </div>
+    </section>
+
+    <section id="v-signin" hidden>
+      <div class="card signin-card">
+        <h2>Welcome back</h2>
+        <p class="sub">Enter the email you signed up with and we'll send you a sign-in link.</p>
+        <form class="signup" id="signin-form">
+          <input type="email" id="signin-email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
+          <button class="btn primary" type="submit">Send link</button>
+        </form>
+        <div class="err" id="signin-err"></div>
+        <p class="switch">New to FlightFare? <button class="btn link" data-go="signup">Get started</button></p>
       </div>
     </section>
 
@@ -236,8 +256,9 @@ function el(tag, attrs = {}, ...kids){
   return n;
 }
 function show(view){
-  for (const v of ['signup', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
+  for (const v of ['signup', 'signin', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
   $('acct').hidden = view !== 'app';
+  $('signin-top').hidden = view !== 'signup';
 }
 async function api(path, opts = {}){
   const headers = { 'Content-Type': 'application/json' };
@@ -324,16 +345,24 @@ function makeCombo(host){
 document.querySelectorAll('.combo').forEach(makeCombo);
 
 // ── sign-up / sign-in ──
-$('signup-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const email = $('signup-email').value.trim(), btn = e.submitter;
-  $('signup-err').textContent = ''; btn.disabled = true;
-  try {
-    await api('/auth/request', { method: 'POST', body: JSON.stringify({ email }) });
-    $('sent-email').textContent = email; show('sent');
-  } catch (err) { $('signup-err').textContent = err.message; }
-  finally { btn.disabled = false; }
-});
+function emailForm(formId, inputId, errId, mode){
+  $(formId).addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = $(inputId).value.trim(), btn = e.submitter;
+    $(errId).textContent = ''; btn.disabled = true;
+    try {
+      await api('/auth/request', { method: 'POST', body: JSON.stringify({ email, mode }) });
+      $('sent-email').textContent = email; show('sent');
+    } catch (err) { $(errId).textContent = err.message; }
+    finally { btn.disabled = false; }
+  });
+}
+emailForm('signup-form', 'signup-email', 'signup-err', 'signup');
+emailForm('signin-form', 'signin-email', 'signin-err', 'signin');
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
+  show(b.dataset.go); $(b.dataset.go + '-email').focus();
+}));
+$('signin-top').addEventListener('click', () => { show('signin'); $('signin-email').focus(); });
 $('sent-back').addEventListener('click', () => show('signup'));
 $('logout').addEventListener('click', async () => {
   try { await api('/auth/logout', { method: 'POST' }); } catch {}
