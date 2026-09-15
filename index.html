@@ -95,7 +95,25 @@ dialog h3{margin-bottom:4px}
 .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 @media (max-width:560px){#acct-email{display:none}}
 .settings .note{flex-basis:100%;color:var(--muted);font-size:.82rem;margin-top:-4px}
-footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px}
+.delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
+.delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.banner{padding:12px 16px;margin-bottom:12px;border-left:3px solid var(--accent);font-size:.9rem}
+.banner b{display:block;margin-bottom:2px}
+.pending.checking::before{content:"";display:inline-block;width:14px;height:14px;margin-right:10px;vertical-align:-2px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pending .hint{display:block;font-size:.84rem;margin-top:6px;color:var(--faint)}
+.combo{position:relative}
+.combo-list{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 4px);max-height:280px;overflow-y:auto;list-style:none;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:4px}
+.combo-list li{padding:8px 10px;border-radius:7px;cursor:pointer;color:var(--text);font-size:.88rem;line-height:1.3}
+.combo-list li[aria-selected=true],.combo-list li:hover{background:var(--bg)}
+.combo-list li b{display:inline-block;min-width:40px;color:var(--navy)}
+.combo-list li small{display:block;color:var(--muted);font-size:.78rem;margin-left:40px}
+.combo-list li.none{cursor:default;color:var(--muted)}
+.dialog-note{font-size:.84rem;color:var(--muted);margin-top:4px}
+#confirm-dialog p{color:var(--muted);margin:8px 0 0;font-size:.92rem}
+#confirm-dialog .actions{flex-wrap:wrap}
+footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;line-height:1.7}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -109,6 +127,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px}
   <main>
     <section id="v-signup" hidden>
       <div class="hero">
+        <span class="delta-only">Delta Air Lines fares only</span>
         <h1>Know the moment your fare changes.</h1>
         <p class="lede">FlightFare checks Delta twice a day for the trips you care about and emails you when the price moves.</p>
         <form class="signup" id="signup-form">
@@ -119,8 +138,8 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px}
         <p class="fine">No password. We'll email you a link that signs you in.</p>
       </div>
       <div class="how">
-        <div class="card"><b>1. Add a trip</b><span>Airports, dates, and optionally the exact flights you want.</span></div>
-        <div class="card"><b>2. We watch it</b><span>Main Classic fares are checked on Delta every morning and evening.</span></div>
+        <div class="card"><b>1. Add a trip</b><span>Airports, dates, and optionally the exact Delta flights you want.</span></div>
+        <div class="card"><b>2. We watch it</b><span>You'll see today's fare in a minute or two, then we check every morning and evening.</span></div>
         <div class="card"><b>3. Get an email</b><span>Whenever the price changes, or drops below your target.</span></div>
       </div>
     </section>
@@ -145,16 +164,19 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px}
       <div id="panel"></div>
     </section>
   </main>
-  <footer>Fares are round-trip per passenger incl. taxes, as shown on delta.com.</footer>
+  <footer>
+    Tracks <b>Delta Air Lines</b> fares only. Fares are round-trip per passenger incl. taxes, as shown on delta.com.<br>
+    FlightFare is an independent service and is not affiliated with Delta Air Lines.
+  </footer>
 </div>
 
-<dialog id="add-dialog">
-  <form id="add-form" method="dialog">
-    <h3>Track a trip</h3>
-    <p class="sub">Round trips on Delta. Prices are checked twice a day.</p>
+<dialog id="trip-dialog">
+  <form id="trip-form" novalidate>
+    <h3 id="trip-title">Track a trip</h3>
+    <p class="sub">Delta Air Lines round trips only.</p>
     <div class="grid2">
-      <label class="field">From<input class="code" name="origin" maxlength="3" placeholder="GRR" required pattern="[A-Za-z]{3}"></label>
-      <label class="field">To<input class="code" name="destination" maxlength="3" placeholder="LGA" required pattern="[A-Za-z]{3}"></label>
+      <div class="field">From<div class="combo" data-for="origin"></div></div>
+      <div class="field">To<div class="combo" data-for="destination"></div></div>
       <label class="field">Depart<input type="date" name="travel_date" required></label>
       <label class="field">Return<input type="date" name="return_date" required></label>
       <label class="field">Cabin
@@ -167,13 +189,28 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px}
         </select>
       </label>
       <label class="field">Alert me below ($)<input type="number" name="alert_below" min="1" step="1" placeholder="optional"></label>
-      <label class="field full">Specific outbound flights (optional)<input name="outbound_flights" placeholder="e.g. DL2547 / DL66"></label>
+      <label class="field full">Specific outbound flights (optional)
+        <input name="outbound_flights" placeholder="e.g. DL2547 / DL66" autocomplete="off">
+        <span class="dialog-note">Leave blank to track the cheapest flights on your dates.</span>
+      </label>
       <label class="field full">Name (optional)<input name="label" maxlength="40" placeholder="e.g. Rome in January"></label>
     </div>
-    <div class="err" id="add-err"></div>
+    <div class="err" id="trip-err"></div>
     <div class="actions">
-      <button class="btn" type="button" id="add-cancel">Cancel</button>
-      <button class="btn primary" type="submit" id="add-submit">Track trip</button>
+      <button class="btn" type="button" id="trip-cancel">Cancel</button>
+      <button class="btn primary" type="submit" id="trip-submit">Track trip</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="confirm-dialog">
+  <form method="dialog" style="padding:22px">
+    <h3>This is a new trip</h3>
+    <p>Changing airports, dates, flights or cabin starts tracking a different trip from scratch. What should happen to <b id="confirm-old"></b>?</p>
+    <div class="actions">
+      <button class="btn" value="cancel">Go back</button>
+      <button class="btn" value="both">Keep tracking both</button>
+      <button class="btn primary" value="replace">Replace it (stop the old one)</button>
     </div>
   </form>
 </dialog>
@@ -186,6 +223,7 @@ const store = {
   set(k, v){ try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 let trips = [], selectedId = null, chart = null;
+const polling = new Map();   // trip id -> { started, timer }
 
 function el(tag, attrs = {}, ...kids){
   const n = document.createElement(tag);
@@ -214,6 +252,77 @@ async function api(path, opts = {}){
   return body;
 }
 
+// ── airports ──
+let AIRPORTS = null, BY_CODE = null;
+const regionName = (() => { try { const d = new Intl.DisplayNames(['en'], { type: 'region' }); return c => { try { return d.of(c); } catch { return c; } }; } catch { return c => c; } })();
+async function loadAirports(){
+  if (AIRPORTS) return;
+  const res = await fetch('/airports.json');
+  AIRPORTS = (await res.json()).map(([code, name, city, country, size]) =>
+    ({ code, name, city, country: regionName(country), size, hay: `${city} ${name} ${regionName(country)}`.toLowerCase() }));
+  BY_CODE = new Map(AIRPORTS.map(a => [a.code, a]));
+}
+function searchAirports(q){
+  q = q.trim().toLowerCase();
+  if (!q) return [];
+  const up = q.toUpperCase();
+  const scored = [];
+  for (const a of AIRPORTS) {
+    let s = null;
+    if (a.code === up) s = 0;
+    else if (q.length <= 3 && a.code.startsWith(up)) s = 1;
+    else if (a.city.toLowerCase().startsWith(q)) s = 2;
+    else if (a.hay.includes(' ' + q) || a.hay.startsWith(q)) s = 3;
+    else if (q.length >= 3 && a.hay.includes(q)) s = 4;
+    if (s !== null) scored.push([s, a.size, a.city, a]);
+  }
+  scored.sort((x, y) => x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]));
+  return scored.slice(0, 8).map(x => x[3]);
+}
+const airportLabel = a => `${a.city} (${a.code})`;
+
+function makeCombo(host){
+  const name = host.dataset.for;
+  const input = el('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', role: 'combobox',
+    'aria-expanded': 'false', 'aria-autocomplete': 'list', placeholder: 'City or airport code' });
+  const hidden = el('input', { type: 'hidden', name });
+  const list = el('ul', { class: 'combo-list', role: 'listbox', hidden: true });
+  host.replaceChildren(input, hidden, list);
+  let items = [], active = -1;
+  const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+  const choose = a => { hidden.value = a.code; input.value = airportLabel(a); close(); };
+  const paint = () => {
+    list.replaceChildren(...(items.length ? items.map((a, i) => el('li', {
+        role: 'option', 'aria-selected': String(i === active),
+        onmousedown: e => { e.preventDefault(); choose(a); },
+      }, el('b', {}, a.code), a.city, el('small', {}, `${a.name} · ${a.country}`)))
+      : [el('li', { class: 'none' }, 'No airports match')]));
+    list.hidden = false; input.setAttribute('aria-expanded', 'true');
+    list.children[active]?.scrollIntoView({ block: 'nearest' });
+  };
+  input.addEventListener('input', async () => {
+    hidden.value = '';
+    await loadAirports();
+    items = searchAirports(input.value); active = items.length ? 0 : -1;
+    input.value.trim() ? paint() : close();
+  });
+  input.addEventListener('keydown', e => {
+    if (list.hidden) return;
+    if (e.key === 'ArrowDown') { active = Math.min(active + 1, items.length - 1); paint(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { active = Math.max(active - 1, 0); paint(); e.preventDefault(); }
+    else if (e.key === 'Enter' && items[active]) { choose(items[active]); e.preventDefault(); }
+    else if (e.key === 'Escape') { close(); e.preventDefault(); e.stopPropagation(); }
+  });
+  input.addEventListener('blur', () => {
+    close();
+    const typed = BY_CODE?.get(input.value.trim().toUpperCase());
+    if (!hidden.value && typed) choose(typed);
+  });
+  host.set = code => { const a = BY_CODE.get(code); hidden.value = a ? a.code : ''; input.value = a ? airportLabel(a) : ''; };
+  host.focus = () => input.focus();
+}
+document.querySelectorAll('.combo').forEach(makeCombo);
+
 // ── sign-up / sign-in ──
 $('signup-form').addEventListener('submit', async e => {
   e.preventDefault();
@@ -230,7 +339,6 @@ $('logout').addEventListener('click', async () => {
   try { await api('/auth/logout', { method: 'POST' }); } catch {}
   store.set('ff-session', null); show('signup');
 });
-
 async function verify(token){
   show('verify');
   history.replaceState(null, '', location.pathname);
@@ -252,50 +360,96 @@ async function loadApp(){
   const remembered = Number(store.get('ff-trip'));
   selectedId = trips.some(t => t.id === remembered) ? remembered : trips[0]?.id ?? null;
   show('app'); render();
+  trips.filter(t => t.check_pending).forEach(t => watchCheck(t.id));
 }
+function select(id){ selectedId = id; store.set('ff-trip', id); render(); }
 function render(){
   $('tabs').replaceChildren(...trips.map(t => el('button', {
-    class: 'tab', role: 'tab', 'aria-selected': String(t.id === selectedId),
-    onclick: () => { selectedId = t.id; store.set('ff-trip', t.id); render(); },
+    class: 'tab', role: 'tab', 'aria-selected': String(t.id === selectedId), onclick: () => select(t.id),
   }, t.label)));
   if (chart) { chart.destroy(); chart = null; }
   const t = trips.find(x => x.id === selectedId);
   $('panel').replaceChildren(t ? tripView(t) : emptyView());
   if (t && t.history.length) drawChart(t);
 }
+function replaceTrip(updated){
+  const i = trips.findIndex(x => x.id === updated.id);
+  if (i >= 0) trips[i] = { ...trips[i], ...updated }; else trips.push(updated);
+  trips.sort((a, b) => a.travel_date.localeCompare(b.travel_date) || a.id - b.id);
+}
+
+// Poll a newly added trip until the home-PC worker has priced it
+function watchCheck(id){
+  if (polling.has(id)) return;
+  const job = { started: Date.now() };
+  polling.set(id, job);
+  const tick = async () => {
+    try {
+      const t = await api(`/trips/${id}`);
+      replaceTrip(t);
+      if (!t.check_pending) { polling.delete(id); if (id === selectedId) render(); return; }
+    } catch { }
+    if (!job.slow && Date.now() - job.started > 8 * 60e3) { job.slow = true; if (id === selectedId) render(); }
+    job.timer = setTimeout(tick, 8000);
+  };
+  job.timer = setTimeout(tick, 5000);
+}
+
 function emptyView(){
   return el('div', { class: 'card empty' },
     el('h2', {}, 'No trips yet'),
-    el('p', {}, "Add a trip and we'll start checking its price on Delta."),
-    el('button', { class: 'btn primary', onclick: openAdd }, '+ Add your first trip'));
+    el('p', {}, "Add a Delta trip and you'll see its price in a minute or two."),
+    el('button', { class: 'btn primary', onclick: () => openTrip() }, '+ Add your first trip'));
 }
 const money = v => '$' + Math.round(v).toLocaleString();
 const when = iso => new Date(iso + 'Z');
 const fmtDate = d => new Date(d + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const CABIN = { main_basic: 'Main Basic', main_classic: 'Main Classic', main_extra: 'Main Extra', comfort: 'Comfort', first: 'First' };
+const PROBLEMS = {
+  flights_not_found: "Those flights aren't available",
+  cabin_unavailable: 'That cabin isn’t available',
+  no_flights: 'No Delta flights found',
+  airport_not_served: 'Delta doesn’t fly there',
+};
 
 function tripView(t){
   const bits = [`${t.origin} → ${t.destination}`, `${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`, CABIN[t.cabin_class] || t.cabin_class];
   if (t.outbound_flights) bits.push(t.outbound_flights);
   const h = t.history;
-  const head = el('div', { class: 'trip-head' }, el('h2', {}, t.label), el('span', { class: 'sub' }, bits.join('  ·  ')));
+  const head = el('div', { class: 'trip-head' }, el('h2', {}, t.label),
+    el('div', { class: 'right' }, el('span', { class: 'sub' }, bits.join('  ·  ')),
+      el('button', { class: 'btn', onclick: () => openTrip(t) }, 'Edit')));
+  const problem = PROBLEMS[t.status] && !t.check_pending
+    ? el('div', { class: 'card banner' }, el('b', {}, PROBLEMS[t.status]),
+        `${t.status_detail || ''} Check the details with Edit, or remove this trip.`)
+    : null;
   const settings = settingsView(t);
   if (!h.length) {
-    return el('div', {}, head,
-      el('div', { class: 'card pending' }, '⏳ Waiting for the first price check. Prices are checked twice a day, and your chart will appear here.'),
-      settings);
+    const job = polling.get(t.id);
+    let box;
+    if (t.check_pending && !job?.slow) {
+      box = el('div', { class: 'card pending checking' }, 'Checking Delta for the current fare…',
+        el('span', { class: 'hint' }, 'This usually takes a minute or two. You can leave this page; the price will be here when you come back.'));
+    } else if (t.check_pending) {
+      box = el('div', { class: 'card pending' }, 'The first check is taking longer than usual.',
+        el('span', { class: 'hint' }, "We'll keep trying, and it will also be checked at the next scheduled time (8 AM and 6 PM)."));
+    } else if (!problem) {
+      box = el('div', { class: 'card pending' }, 'Waiting for the first price check.',
+        el('span', { class: 'hint' }, 'Prices are checked every morning and evening.'));
+    }
+    return el('div', {}, head, problem, box, settings);
   }
   const prices = h.map(r => r.price), last = h[h.length - 1], prev = h[h.length - 2];
   const delta = prev ? last.price - prev.price : 0;
   const chg = delta > 0 ? ['▲ ' + money(delta), 'up'] : delta < 0 ? ['▼ ' + money(-delta), 'down'] : ['$0', 'flat'];
   const stat = (k, v, cls = '') => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k), el('div', { class: 'v ' + cls }, v));
   const checked = when(last.scraped_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  return el('div', {}, head,
+  return el('div', {}, head, problem,
     el('div', { class: 'stats' },
       stat('Latest', money(last.price)), stat('Change', chg[0], chg[1]),
       stat('Lowest seen', money(Math.min(...prices))), stat('Highest seen', money(Math.max(...prices)))),
     el('div', { class: 'card chart' }, el('canvas', { id: 'chart', 'aria-label': `Price history for ${t.label}`, role: 'img' })),
-    el('p', { class: 'sub', style: 'margin:-4px 0 10px 2px' }, `Last checked ${checked}`),
+    el('p', { class: 'sub', style: 'margin:-4px 0 10px 2px' }, `Last priced ${checked}`),
     historyTable(h),
     settings);
 }
@@ -320,18 +474,22 @@ function settingsView(t){
   const form = el('form', { onsubmit: async e => {
       e.preventDefault(); msg.textContent = '';
       try {
-        const updated = await api(`/trips/${t.id}`, { method: 'PATCH', body: JSON.stringify({ alert_below: input.value ? Number(input.value) : 0 }) });
-        Object.assign(t, updated); msg.textContent = 'Saved.';
+        replaceTrip(await api(`/trips/${t.id}`, { method: 'PATCH', body: JSON.stringify({ alert_below: input.value ? Number(input.value) : 0 }) }));
+        msg.textContent = 'Saved.';
       } catch (err) { msg.textContent = err.message; }
     } },
     el('label', {}, 'Alert me below $ ', input), el('button', { class: 'btn', type: 'submit' }, 'Save'), msg);
   const remove = el('button', { class: 'btn link danger', onclick: async () => {
       if (!confirm(`Stop tracking ${t.label}?`)) return;
-      try { await api(`/trips/${t.id}`, { method: 'DELETE' }); trips = trips.filter(x => x.id !== t.id); selectedId = trips[0]?.id ?? null; render(); }
-      catch (err) { alert(err.message); }
+      try { await removeTrip(t.id); render(); } catch (err) { alert(err.message); }
     } }, 'Stop tracking');
   return el('div', { class: 'card settings' }, form, remove,
     el('p', { class: 'note' }, "We also email you whenever this trip's price changes."));
+}
+async function removeTrip(id){
+  await api(`/trips/${id}`, { method: 'DELETE' });
+  trips = trips.filter(x => x.id !== id);
+  if (selectedId === id) selectedId = trips[0]?.id ?? null;
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function drawChart(t){
@@ -339,10 +497,11 @@ function drawChart(t){
   const lo = Math.min(...pts.map(p => p.y)), hi = Math.max(...pts.map(p => p.y)), pad = Math.max(25, (hi - lo) * 0.15);
   const ink = css('--muted'), grid = css('--grid'), line = css('--line');
   const fmtTick = ms => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const single = pts.length === 1;
   chart = new Chart($('chart'), {
     type: 'line',
     data: { datasets: [{ data: pts, borderColor: line, backgroundColor: css('--fill'), fill: 'start',
-      borderWidth: 2.5, tension: 0.35, cubicInterpolationMode: 'monotone', clip: false, pointRadius: 3.5, pointHoverRadius: 6,
+      borderWidth: 2.5, tension: 0.35, cubicInterpolationMode: 'monotone', clip: false, pointRadius: single ? 6 : 3.5, pointHoverRadius: 6,
       pointBackgroundColor: line, pointBorderColor: css('--card'), pointBorderWidth: 2 }] },
     options: {
       maintainAspectRatio: false, animation: false, layout: { padding: { left: 6, right: 10 } },
@@ -354,8 +513,8 @@ function drawChart(t){
           label: item => money(item.parsed.y),
         } } },
       scales: {
-        x: { type: 'linear', min: pts[0].x, max: pts[pts.length - 1].x, grid: { display: false }, border: { color: grid },
-             ticks: { color: ink, maxTicksLimit: 7, callback: fmtTick } },
+        x: { type: 'linear', min: single ? pts[0].x - 864e5 : pts[0].x, max: single ? pts[0].x + 864e5 : pts[pts.length - 1].x,
+             grid: { display: false }, border: { color: grid }, ticks: { color: ink, maxTicksLimit: 7, callback: fmtTick } },
         y: { min: Math.floor((lo - pad) / 25) * 25, max: Math.ceil((hi + pad) / 25) * 25,
              grid: { color: grid }, border: { display: false },
              ticks: { color: ink, maxTicksLimit: 6, callback: v => money(v) } },
@@ -364,29 +523,84 @@ function drawChart(t){
   });
 }
 
-// ── add trip ──
-const dlg = $('add-dialog');
-function openAdd(){
-  $('add-form').reset(); $('add-err').textContent = '';
+// ── add / edit trip ──
+const dlg = $('trip-dialog'), form = $('trip-form');
+const combos = { origin: document.querySelector('.combo[data-for=origin]'), destination: document.querySelector('.combo[data-for=destination]') };
+let editing = null;
+const normFlights = s => (s.toUpperCase().match(/[A-Z0-9]{2}\s*\d{1,4}/g) || []).map(f => f.replace(/\s+/g, '').replace(/^([A-Z0-9]{2})0*(\d)/, '$1$2')).join(' / ');
+const DEFINING = ['origin', 'destination', 'travel_date', 'return_date', 'outbound_flights', 'cabin_class'];
+
+async function openTrip(t = null){
+  editing = t;
+  form.reset(); $('trip-err').textContent = '';
+  $('trip-title').textContent = t ? 'Edit trip' : 'Track a trip';
+  $('trip-submit').textContent = t ? 'Save changes' : 'Track trip';
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-  $('add-form').travel_date.min = tomorrow; $('add-form').return_date.min = tomorrow;
+  form.travel_date.min = tomorrow; form.return_date.min = tomorrow;
+  await loadAirports();
+  combos.origin.set(t?.origin || ''); combos.destination.set(t?.destination || '');
+  if (t) {
+    for (const k of ['travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'label']) form[k].value = t[k] ?? '';
+    form.alert_below.value = t.alert_below ?? '';
+  }
   dlg.showModal();
+  if (!t) combos.origin.focus();
 }
-$('add-open').addEventListener('click', openAdd);
-$('add-cancel').addEventListener('click', () => dlg.close());
-$('add-form').travel_date.addEventListener('change', e => { $('add-form').return_date.min = e.target.value; });
-$('add-form').addEventListener('submit', async e => {
+$('add-open').addEventListener('click', () => openTrip());
+$('trip-cancel').addEventListener('click', () => dlg.close());
+form.travel_date.addEventListener('change', e => { form.return_date.min = e.target.value; });
+
+function readForm(){
+  const f = Object.fromEntries(new FormData(form));
+  if (!f.origin) throw new Error('Pick the departure airport from the list.');
+  if (!f.destination) throw new Error('Pick the destination airport from the list.');
+  if (f.origin === f.destination) throw new Error('The origin and destination must be different airports.');
+  if (!f.travel_date || !f.return_date) throw new Error('Choose both travel dates.');
+  if (f.return_date <= f.travel_date) throw new Error('The return date must be after the departure date.');
+  if (f.outbound_flights.trim()) {
+    const cleaned = f.outbound_flights.toUpperCase().replace(/[A-Z0-9]{2}\s*\d{1,4}/g, '').replace(/[\s\/,+&-]/g, '');
+    if (cleaned || !normFlights(f.outbound_flights)) throw new Error('Enter flight numbers like DL2547 / DL66, or leave it blank.');
+  }
+  return { ...f, outbound_flights: normFlights(f.outbound_flights), label: f.label.trim(),
+           alert_below: f.alert_below ? Number(f.alert_below) : null };
+}
+function askReplaceOrBoth(t){
+  return new Promise(resolve => {
+    const c = $('confirm-dialog');
+    $('confirm-old').textContent = t.label;
+    c.addEventListener('close', () => resolve(c.returnValue || 'cancel'), { once: true });
+    c.returnValue = ''; c.showModal();
+  });
+}
+form.addEventListener('submit', async e => {
   e.preventDefault();
-  const f = Object.fromEntries(new FormData(e.target));
-  const body = { ...f, origin: f.origin.toUpperCase(), destination: f.destination.toUpperCase(),
-                 alert_below: f.alert_below ? Number(f.alert_below) : null };
-  $('add-err').textContent = ''; $('add-submit').disabled = true;
+  $('trip-err').textContent = '';
+  let body;
+  try { body = readForm(); } catch (err) { $('trip-err').textContent = err.message; return; }
+  $('trip-submit').disabled = true;
   try {
+    if (!editing) {
+      const t = await api('/trips', { method: 'POST', body: JSON.stringify(body) });
+      replaceTrip(t); dlg.close(); select(t.id);
+      if (t.check_pending) watchCheck(t.id);
+      return;
+    }
+    const changed = DEFINING.some(k => String(body[k] ?? '') !== String(editing[k] ?? ''));
+    if (!changed) {
+      const t = await api(`/trips/${editing.id}`, { method: 'PATCH',
+        body: JSON.stringify({ label: body.label || editing.label, alert_below: body.alert_below ?? 0 }) });
+      replaceTrip(t); dlg.close(); render();
+      return;
+    }
+    const choice = await askReplaceOrBoth(editing);
+    if (choice === 'cancel') return;
+    if (!body.label || body.label === editing.label) body.label = choice === 'both' ? '' : editing.label;
     const t = await api('/trips', { method: 'POST', body: JSON.stringify(body) });
-    trips.push(t); trips.sort((a, b) => a.travel_date.localeCompare(b.travel_date) || a.id - b.id);
-    selectedId = t.id; store.set('ff-trip', t.id); dlg.close(); render();
-  } catch (err) { $('add-err').textContent = err.message; }
-  finally { $('add-submit').disabled = false; }
+    if (choice === 'replace') await removeTrip(editing.id);
+    replaceTrip(t); dlg.close(); select(t.id);
+    if (t.check_pending) watchCheck(t.id);
+  } catch (err) { $('trip-err').textContent = err.message; }
+  finally { $('trip-submit').disabled = false; }
 });
 
 // ── boot ──
