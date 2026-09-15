@@ -150,6 +150,11 @@ body.dev{padding-top:22px}
 .fb-item{padding:12px 16px}
 .fb-item .meta{color:var(--muted);font-size:.8rem;margin-bottom:4px}
 .fb-item p{white-space:pre-wrap;margin:0}
+.acctbtn{border:none;background:none;padding:2px 4px;font:inherit;font-weight:700;color:var(--text);cursor:pointer;border-radius:6px;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acctbtn:hover{background:var(--bg);color:var(--navy)}
+.home-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.home-row .combo{flex:1;min-width:200px}
+.home-row .combo input[role=combobox],.stack .combo input[role=combobox],#settings-dialog .combo input[role=combobox]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text)}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -178,7 +183,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 <div class="wrap">
   <header class="top">
     <a class="brand" href="./">✈ FlightFare</a>
-    <div class="acct" id="acct" hidden><span class="who">Signed in as</span><b id="acct-email"></b><button class="btn link" id="logout">Sign out</button></div>
+    <div class="acct" id="acct" hidden><span class="who">Signed in as</span><button class="acctbtn" id="acct-email" title="Account settings"></button><button class="btn link" id="logout">Sign out</button></div>
     <button class="btn" id="signin-top" hidden>Sign in</button>
   </header>
 
@@ -229,6 +234,8 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <p class="sub" id="reset-sub">You'll be signed in right after.</p>
         <form class="stack" id="reset-form" novalidate>
           <input type="password" id="reset-password" placeholder="New password (8+ characters)" autocomplete="new-password" required minlength="8" aria-label="New password">
+          <div id="signup-home" hidden><div class="combo" id="home-combo-signup" data-for="home_airport"></div>
+            <span class="fine" style="margin-top:4px;display:block">Your home airport: we'll fill it in when you add trips.</span></div>
           <button class="btn primary" type="submit">Save password</button>
         </form>
         <div class="err" id="reset-err"></div>
@@ -258,6 +265,14 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
       <div class="card banner" id="pw-banner" hidden style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
         <span><b>Create a password</b>so you can sign in with your email and password, without waiting for email links.</span>
         <button class="btn primary" id="pw-create">Create password</button>
+      </div>
+      <div class="card banner" id="home-banner" hidden>
+        <b>Where do you usually fly from?</b>
+        <div class="home-row" style="margin-top:8px">
+          <div class="combo" id="home-combo-banner" data-for="home_airport"></div>
+          <button class="btn primary" id="home-save">Save</button>
+          <button class="btn link" id="home-skip">Not now</button>
+        </div>
       </div>
       <div id="panel"></div>
     </section>
@@ -307,6 +322,20 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
     <div class="actions">
       <button class="btn" type="button" id="trip-cancel">Cancel</button>
       <button class="btn primary" type="submit" id="trip-submit">Track trip</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings-dialog">
+  <form id="settings-form" style="padding:22px" novalidate>
+    <h3>Your account</h3>
+    <p class="sub" id="settings-email" style="margin:4px 0 14px"></p>
+    <div class="field">Home airport<div class="combo" id="home-combo-settings" data-for="home_airport"></div></div>
+    <div class="err" id="settings-err"></div>
+    <div class="actions" style="justify-content:space-between">
+      <button class="btn link" type="button" id="settings-password">Change password</button>
+      <span style="display:flex;gap:8px"><button class="btn" type="button" id="settings-cancel">Close</button>
+      <button class="btn primary" type="submit">Save</button></span>
     </div>
   </form>
 </dialog>
@@ -495,6 +524,8 @@ onSubmit('reset-form', 'reset-err', async () => {
     store.set(KEY.session, r.session); resetToken = null;
   } else {
     await api('/auth/password', { method: 'POST', body: JSON.stringify({ password }) });
+    const home = comboValue('home-combo-signup');
+    if (home) await api('/me', { method: 'PATCH', body: JSON.stringify({ home_airport: home }) });
   }
   $('reset-password').value = '';
   await loadApp();
@@ -521,8 +552,11 @@ function initGoogle(){
 // Google's script loads async; the window load event waits for it
 if (document.readyState === 'complete') initGoogle(); else window.addEventListener('load', initGoogle);
 function askForPassword(){
-  $('reset-title').textContent = 'Create your password';
-  $('reset-sub').textContent = "You'll use it with your email to sign in next time.";
+  const changing = ME?.has_password;
+  $('reset-title').textContent = changing ? 'Choose a new password' : 'Create your password';
+  $('reset-sub').textContent = changing ? "You'll use it next time you sign in." : "You'll use it with your email to sign in next time.";
+  $('signup-home').hidden = !!(ME?.home_airport) || changing;
+  loadAirports();
   $('reset-password').placeholder = 'Password (8+ characters)';
   show('reset'); $('reset-password').focus();
 }
@@ -551,9 +585,16 @@ async function verify(token){
 
 // ── dashboard ──
 let ME = null;
+const comboValue = id => $(id).querySelector('input[type=hidden]').value;
+async function saveHome(code){
+  const r = await api('/me', { method: 'PATCH', body: JSON.stringify({ home_airport: code }) });
+  ME.home_airport = r.home_airport;
+  $('home-banner').hidden = true;
+}
 async function loadApp(){
   const [me, list] = await Promise.all([api('/me'), api('/trips')]);
   ME = me;
+  loadAirports().then(() => { $('home-banner').hidden = !!me.home_airport || store.get(KEY.session + '-home-skip') === '1'; });
   $('acct-email').textContent = me.email;
   $('admin-open').hidden = !me.is_admin;
   $('pw-banner').hidden = me.has_password || me.has_google;
@@ -772,6 +813,27 @@ function drawChart(t){
   });
 }
 
+// ── home airport & account settings ──
+$('home-save').addEventListener('click', async () => {
+  const code = comboValue('home-combo-banner');
+  if (!code) { alert('Pick an airport from the list first.'); return; }
+  try { await saveHome(code); } catch (err) { alert(err.message); }
+});
+$('home-skip').addEventListener('click', () => { store.set(KEY.session + '-home-skip', '1'); $('home-banner').hidden = true; });
+$('acct-email').addEventListener('click', async () => {
+  await loadAirports();
+  $('settings-email').textContent = ME.email; $('settings-err').textContent = '';
+  $('home-combo-settings').set(ME.home_airport || '');
+  $('settings-dialog').showModal();
+});
+$('settings-cancel').addEventListener('click', () => $('settings-dialog').close());
+$('settings-password').addEventListener('click', () => { $('settings-dialog').close(); askForPassword(); });
+$('settings-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  try { await saveHome(comboValue('home-combo-settings')); $('settings-dialog').close(); }
+  catch (err) { $('settings-err').textContent = err.message; }
+});
+
 // ── feedback ──
 $('feedback-open').addEventListener('click', () => {
   $('fb-err').textContent = ''; $('fb-send').disabled = false; $('fb-send').textContent = 'Send';
@@ -905,7 +967,7 @@ async function openTrip(t = null){
   $('trip-title').textContent = t ? 'Edit trip' : 'Track a trip';
   $('trip-submit').textContent = t ? 'Save changes' : 'Track trip';
   await loadAirports();
-  combos.origin.set(t?.origin || ''); combos.destination.set(t?.destination || '');
+  combos.origin.set(t?.origin || (t ? '' : ME?.home_airport || '')); combos.destination.set(t?.destination || '');
   if (t) {
     for (const k of ['travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'preference', 'label']) form[k].value = t[k] ?? '';
     form.alert_below.value = t.alert_below ?? '';
@@ -913,7 +975,7 @@ async function openTrip(t = null){
   syncPref();
   range.load(t?.travel_date || '', t?.return_date || '');
   dlg.showModal();
-  if (!t) combos.origin.focus();
+  if (!t) (ME?.home_airport ? combos.destination : combos.origin).focus();
 }
 $('add-open').addEventListener('click', () => openTrip());
 $('trip-cancel').addEventListener('click', () => dlg.close());
