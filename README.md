@@ -29,7 +29,8 @@ on and signed in. See `deploy/windows.md`.
 3. Promote: migrate the live database if needed, deploy the API to `/opt/flightfare/api`, deploy the
    tracker to the Windows PC if it changed, and publish `site/index.html` to `index.html`.
 4. Run `tests/e2e_live.py`.
-5. Bump `VERSION` (and the `VERSION` constants in `site/index.html`, `api/api.py`, `tracker/tracker.py`),
+5. Bump `VERSION` and the `VERSION` constant of each component you changed (`site/index.html`, `api/api.py`,
+   `tracker/tracker.py`; each reports the release it last changed in),
    add a `CHANGELOG.md` entry, commit, and tag `vX.Y.Z`.
 
 Versions follow semantic versioning: patch for fixes, minor for new features, major for breaking changes.

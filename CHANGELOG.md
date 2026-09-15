@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 (2026-09-15)
+
+- Fix: the word "null" appeared under the header for anyone without archived trips.
+
 ## 1.0.0 (2026-09-15)
 
 First versioned release.

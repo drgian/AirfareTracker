@@ -56,6 +56,7 @@ async def main():
         await pg.click("#reset-form button[type=submit]")
         await pg.wait_for_selector("text=No trips yet")
         check(sql(f"SELECT home_airport FROM users WHERE email='{EMAIL}'") == "GRR", "sign-up with password and home airport")
+        check("null" not in (await pg.inner_text("#v-app")).split(), "no stray 'null' text on an empty dashboard")
 
         await pg.click("#add-open")
         await pg.wait_for_function("document.getElementById('trip-dialog').open")
