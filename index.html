@@ -9,10 +9,10 @@
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--border:#e3e6eb;--text:#111827;--muted:#6b7280;--faint:#9ca3af;
   --accent:#c8102e;--accent-ink:#fff;--navy:#003366;--line:#003366;--fill:rgba(0,51,102,.07);--grid:rgba(17,24,39,.06);
-  --up:#c8102e;--down:#1f6fd1;--hi:#c8102e;--lo:#1f6fd1;--danger:#b91c1c;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04)}
+  --up:#c8102e;--down:#15803d;--hi:#c8102e;--lo:#1f6fd1;--danger:#b91c1c;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04)}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--border:#2b3240;--text:#e6edf3;--muted:#9aa4b2;
   --faint:#6e7681;--accent:#e0283f;--navy:#9dbbe3;--line:#8fb2e0;--fill:rgba(143,178,224,.12);--grid:rgba(230,237,243,.07);
-  --up:#ff5a6a;--down:#5aa2ff;--hi:#ff5a6a;--lo:#5aa2ff;--danger:#f87171;--shadow:none}}
+  --up:#ff5a6a;--down:#4ade80;--hi:#ff5a6a;--lo:#5aa2ff;--danger:#f87171;--shadow:none}}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
 button,input,select{font:inherit;color:inherit}
@@ -216,6 +216,10 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
           <button class="btn" id="admin-open" hidden>Admin</button>
           <button class="btn primary" id="add-open">+ Add trip</button>
         </div>
+      </div>
+      <div class="card banner" id="pw-banner" hidden style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span><b>Create a password</b>so you can sign in with your email and password, without waiting for email links.</span>
+        <button class="btn primary" id="pw-create">Create password</button>
       </div>
       <div id="panel"></div>
     </section>
@@ -430,6 +434,7 @@ onSubmit('reset-form', 'reset-err', async () => {
   $('reset-password').value = '';
   await loadApp();
 });
+$('pw-create').addEventListener('click', () => askForPassword());
 function askForPassword(){
   $('reset-title').textContent = 'Create your password';
   $('reset-sub').textContent = "You'll use it with your email to sign in next time.";
@@ -466,6 +471,7 @@ async function loadApp(){
   ME = me;
   $('acct-email').textContent = me.email;
   $('admin-open').hidden = !me.is_admin;
+  $('pw-banner').hidden = me.has_password;
   trips = list;
   const remembered = Number(store.get('ff-trip'));
   selectedId = trips.some(t => t.id === remembered) ? remembered : trips[0]?.id ?? null;
