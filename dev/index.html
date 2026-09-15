@@ -242,6 +242,19 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
       </div>
     </section>
 
+    <section id="v-welcome" hidden>
+      <div class="card signin-card">
+        <h2>Welcome to FlightFare!</h2>
+        <p class="sub">Where do you usually fly from? We'll fill it in whenever you add a trip.</p>
+        <form class="stack" id="welcome-form" novalidate>
+          <div class="combo" id="home-combo-welcome" data-for="home_airport"></div>
+          <button class="btn primary" type="submit">Continue</button>
+        </form>
+        <div class="err" id="welcome-err"></div>
+        <p class="switch"><button class="btn link" type="button" id="welcome-skip">Skip for now</button></p>
+      </div>
+    </section>
+
     <section id="v-sent" hidden>
       <div class="notice card">
         <h2>Check your email</h2>
@@ -266,14 +279,6 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <span><b>Create a password</b>so you can sign in with your email and password, without waiting for email links.</span>
         <button class="btn primary" id="pw-create">Create password</button>
       </div>
-      <div class="card banner" id="home-banner" hidden>
-        <b>Where do you usually fly from?</b>
-        <div class="home-row" style="margin-top:8px">
-          <div class="combo" id="home-combo-banner" data-for="home_airport"></div>
-          <button class="btn primary" id="home-save">Save</button>
-          <button class="btn link" id="home-skip">Not now</button>
-        </div>
-      </div>
       <div id="panel"></div>
     </section>
   </main>
@@ -281,7 +286,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
     <button class="fbbtn" id="feedback-open" type="button">💬 Send feedback</button><br>
     Tracks <b>Delta Air Lines</b> fares only. Fares are round-trip per passenger incl. taxes, as shown on delta.com.<br>
     FlightFare is an independent service and is not affiliated with Delta Air Lines.<br>
-    <a href="/privacy.html" style="color:inherit">Privacy</a> · <a href="/terms.html" style="color:inherit">Terms</a>
+    <a href="/privacy.html" style="color:inherit">Privacy</a> · <a href="/terms.html" style="color:inherit">Terms</a> · <span id="version"></span>
   </footer>
 </div>
 
@@ -369,6 +374,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
+const VERSION = '1.0.0';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -391,8 +397,8 @@ function el(tag, attrs = {}, ...kids){
   return n;
 }
 function show(view){
-  for (const v of ['signup', 'signin', 'reset', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
-  $('acct').hidden = view !== 'app';
+  for (const v of ['signup', 'signin', 'reset', 'welcome', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
+  $('acct').hidden = view !== 'app' && view !== 'welcome';
   $('signin-top').hidden = view !== 'signup';
 }
 async function api(path, opts = {}){
@@ -408,6 +414,7 @@ async function api(path, opts = {}){
   return body;
 }
 
+$('version').textContent = 'v' + VERSION + (DEV ? ' (dev)' : '');
 if (DEV) { $('devflag').hidden = false; document.body.classList.add('dev'); document.title = 'FlightFare (dev)'; }
 
 // ── airports ──
@@ -589,12 +596,11 @@ const comboValue = id => $(id).querySelector('input[type=hidden]').value;
 async function saveHome(code){
   const r = await api('/me', { method: 'PATCH', body: JSON.stringify({ home_airport: code }) });
   ME.home_airport = r.home_airport;
-  $('home-banner').hidden = true;
 }
 async function loadApp(){
   const [me, list] = await Promise.all([api('/me'), api('/trips')]);
   ME = me;
-  loadAirports().then(() => { $('home-banner').hidden = !!me.home_airport || store.get(KEY.session + '-home-skip') === '1'; });
+
   $('acct-email').textContent = me.email;
   $('admin-open').hidden = !me.is_admin;
   $('pw-banner').hidden = me.has_password || me.has_google;
@@ -602,8 +608,14 @@ async function loadApp(){
   const remembered = Number(store.get(KEY.trip));
   const firstActive = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
   selectedId = trips.some(t => t.id === remembered) ? remembered : firstActive;
-  show('app'); render();
   trips.filter(t => t.check_pending).forEach(t => watchCheck(t.id));
+  // First visit without a home airport (new sign-ups, Google sign-ins, older accounts): ask once
+  if (!me.home_airport && store.get(KEY.session + '-home-skip') !== '1') {
+    await loadAirports();
+    show('welcome'); $('home-combo-welcome').focus();
+    return;
+  }
+  show('app'); render();
 }
 function select(id){ selectedId = id; store.set(KEY.trip, id); render(); }
 function render(){
@@ -814,12 +826,13 @@ function drawChart(t){
 }
 
 // ── home airport & account settings ──
-$('home-save').addEventListener('click', async () => {
-  const code = comboValue('home-combo-banner');
-  if (!code) { alert('Pick an airport from the list first.'); return; }
-  try { await saveHome(code); } catch (err) { alert(err.message); }
+$('welcome-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const code = comboValue('home-combo-welcome');
+  if (!code) { $('welcome-err').textContent = 'Pick your airport from the list, or skip for now.'; return; }
+  try { await saveHome(code); show('app'); render(); } catch (err) { $('welcome-err').textContent = err.message; }
 });
-$('home-skip').addEventListener('click', () => { store.set(KEY.session + '-home-skip', '1'); $('home-banner').hidden = true; });
+$('welcome-skip').addEventListener('click', () => { store.set(KEY.session + '-home-skip', '1'); show('app'); render(); });
 $('acct-email').addEventListener('click', async () => {
   await loadAirports();
   $('settings-email').textContent = ME.email; $('settings-err').textContent = '';
