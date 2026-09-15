@@ -266,6 +266,11 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
       </div>
     </section>
 
+    <section id="v-private" hidden>
+      <div class="notice card"><h2>This test site is private</h2>
+        <p>You're looking for <a href="https://flightfare.io/">flightfare.io</a>.</p></div>
+    </section>
+
     <section id="v-welcome" hidden>
       <div class="card signin-card">
         <h2>Welcome to FlightFare!</h2>
@@ -422,7 +427,7 @@ function el(tag, attrs = {}, ...kids){
   return n;
 }
 function show(view){
-  for (const v of ['signup', 'signin', 'reset', 'welcome', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
+  for (const v of ['signup', 'signin', 'reset', 'welcome', 'sent', 'verify', 'app', 'private']) $('v-' + v).hidden = v !== view;
   $('acct').hidden = view !== 'app' && view !== 'welcome';
   $('signin-top').hidden = view !== 'signup';
 }
@@ -434,13 +439,17 @@ async function api(path, opts = {}){
   try { res = await fetch(API + path, { ...opts, headers }); }
   catch { throw new Error("Can't reach FlightFare right now. Check your connection and try again."); }
   if (res.status === 401 && s) { store.set(KEY.session, null); show('signup'); throw new Error('Please sign in again.'); }
+  if (res.status === 403 && DEV) { store.set(KEY.session, null); show('private'); throw new Error('This test site is private.'); }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Something went wrong. Please try again.');
   return body;
 }
 
 $('version').textContent = 'v' + VERSION + (DEV ? ' (dev)' : '');
-if (DEV) { $('devflag').hidden = false; document.body.classList.add('dev'); document.title = 'FlightFare (dev)'; }
+if (DEV) {
+  $('devflag').hidden = false; document.body.classList.add('dev'); document.title = 'FlightFare (dev)';
+  document.head.append(el('meta', { name: 'robots', content: 'noindex, nofollow' }));
+}
 
 // ── airports ──
 let AIRPORTS = null, BY_CODE = null;
@@ -1322,7 +1331,11 @@ async function boot(){
   }
   const token = params.get('login');
   if (token) return verify(token);
-  if (!store.get(KEY.session)) return show('signup');
+  if (!store.get(KEY.session)) {
+    // The dev copy is private: signed-out visitors only get the sign-in form (which only accepts the owner)
+    if (DEV) { show('signin'); $('signin-top').hidden = true; document.querySelectorAll('#v-signin .switch').forEach(e => e.remove()); return; }
+    return show('signup');
+  }
   try { await loadApp(); } catch { show('signup'); }
 }
 // A sign-in link opened in a tab already on this page changes only the hash, which doesn't reload it
