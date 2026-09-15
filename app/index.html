@@ -7,10 +7,10 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈</text></svg>">
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--border:#e3e6eb;--text:#111827;--muted:#6b7280;--faint:#9ca3af;
-  --accent:#1d4ed8;--accent-ink:#fff;--line:#2563eb;--fill:rgba(37,99,235,.08);--grid:rgba(17,24,39,.06);
+  --accent:#c8102e;--accent-ink:#fff;--navy:#003366;--line:#003366;--fill:rgba(0,51,102,.07);--grid:rgba(17,24,39,.06);
   --up:#b91c1c;--down:#15803d;--danger:#b91c1c;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04)}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--border:#2b3240;--text:#e6edf3;--muted:#9aa4b2;
-  --faint:#6e7681;--accent:#3b82f6;--line:#60a5fa;--fill:rgba(96,165,250,.10);--grid:rgba(230,237,243,.07);
+  --faint:#6e7681;--accent:#e0283f;--navy:#9dbbe3;--line:#8fb2e0;--fill:rgba(143,178,224,.12);--grid:rgba(230,237,243,.07);
   --up:#f87171;--down:#4ade80;--danger:#f87171;--shadow:none}}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
@@ -18,7 +18,7 @@ button,input,select{font:inherit;color:inherit}
 [hidden]{display:none!important}
 .wrap{max-width:980px;margin:0 auto;padding:0 18px}
 header.top{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
-.brand{font-weight:750;font-size:1.15rem;letter-spacing:-.01em;text-decoration:none;color:var(--text)}
+.brand{font-weight:750;font-size:1.15rem;letter-spacing:-.01em;text-decoration:none;color:var(--navy)}
 .acct{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.88rem}
 .btn{border:1px solid var(--border);background:var(--card);border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600;font-size:.88rem}
 .btn:hover{border-color:var(--faint)}
@@ -33,7 +33,7 @@ header.top{display:flex;align-items:center;justify-content:space-between;padding
 
 /* sign-up */
 .hero{max-width:560px;margin:9vh auto 0;text-align:center}
-.hero h1{font-size:clamp(2rem,5vw,2.8rem);line-height:1.1;letter-spacing:-.02em;margin-bottom:14px}
+.hero h1{color:var(--navy);font-size:clamp(2rem,5vw,2.8rem);line-height:1.1;letter-spacing:-.02em;margin-bottom:14px}
 .hero p.lede{color:var(--muted);font-size:1.08rem;margin-bottom:28px}
 .signup{display:flex;gap:8px;max-width:440px;margin:0 auto}
 .signup input{flex:1;min-width:0;padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
@@ -342,7 +342,7 @@ function drawChart(t){
   chart = new Chart($('chart'), {
     type: 'line',
     data: { datasets: [{ data: pts, borderColor: line, backgroundColor: css('--fill'), fill: 'start',
-      borderWidth: 2, stepped: 'after', clip: false, pointRadius: 4, pointHoverRadius: 6,
+      borderWidth: 2.5, tension: 0.35, cubicInterpolationMode: 'monotone', clip: false, pointRadius: 3.5, pointHoverRadius: 6,
       pointBackgroundColor: line, pointBorderColor: css('--card'), pointBorderWidth: 2 }] },
     options: {
       maintainAspectRatio: false, animation: false, layout: { padding: { left: 6, right: 10 } },
