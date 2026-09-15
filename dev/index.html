@@ -1050,26 +1050,51 @@ $('analysis-open').addEventListener('click', () => { selectedId = 'analysis'; re
 const pct = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%';
 const MIN_N = 3;   // bars with fewer checks are shown faded as "not enough data"
 
-function relChart(canvas, labels, rows){
+// Dots = average vs. the route's own average; whiskers = ±1 standard deviation of the checks in that group
+const whiskers = { id: 'whiskers', afterDatasetsDraw(chart) {
+  const ds = chart.data.datasets[0], { ctx, scales: { y } } = chart, meta = chart.getDatasetMeta(0);
+  ctx.save(); ctx.lineWidth = 2;
+  meta.data.forEach((pt, i) => {
+    const v = ds.data[i], sd = ds.sd[i];
+    if (v == null || sd == null) return;
+    const top = y.getPixelForValue(v + sd), bot = y.getPixelForValue(v - sd);
+    ctx.strokeStyle = ds.pointBackgroundColor[i];
+    ctx.beginPath();
+    ctx.moveTo(pt.x, top); ctx.lineTo(pt.x, bot);
+    ctx.moveTo(pt.x - 6, top); ctx.lineTo(pt.x + 6, top);
+    ctx.moveTo(pt.x - 6, bot); ctx.lineTo(pt.x + 6, bot);
+    ctx.stroke();
+  });
+  ctx.restore();
+} };
+
+function relChart(canvas, labels, rows, { connect = false } = {}){
   const vals = rows.map(r => r ? r.rel * 100 : null), ns = rows.map(r => r ? r.n : 0);
+  const sds = rows.map(r => r && r.sd != null && r.n > 1 ? r.sd * 100 : null);
   const color = (v, n) => { const c = css(v < 0 ? '--lo' : '--hi'); return n >= MIN_N ? c : c + '55'; };
   const ink = css('--muted'), grid = css('--grid');
-  const lim = Math.max(10, Math.ceil(Math.max(...vals.map(v => Math.abs(v || 0))) / 5) * 5);
+  const reach = vals.map((v, i) => v == null ? 0 : Math.abs(v) + (sds[i] || 0));
+  const lim = Math.max(10, Math.ceil(Math.max(...reach) / 5) * 5);
   analysisCharts.push(new Chart(canvas, {
-    type: 'bar',
+    type: 'line',
+    plugins: [whiskers],
     data: { labels: labels.map((l, i) => [l, ns[i] ? `n=${ns[i]}` : '—']),
-      datasets: [{ data: vals, backgroundColor: vals.map((v, i) => color(v, ns[i])), borderRadius: 4, maxBarThickness: 36 }] },
-    options: { maintainAspectRatio: false, animation: false,
+      datasets: [{ data: vals, sd: sds, showLine: connect, spanGaps: true, borderColor: css('--faint'), borderWidth: 1.5,
+        pointRadius: 5, pointHoverRadius: 7, pointBorderWidth: 2, pointBorderColor: css('--card'),
+        pointBackgroundColor: vals.map((v, i) => color(v, ns[i])) }] },
+    options: { maintainAspectRatio: false, animation: false, layout: { padding: { top: 6 } },
       plugins: { legend: { display: false }, tooltip: { displayColors: false, callbacks: {
         title: items => labels[items[0].dataIndex],
         label: item => {
-          const n = ns[item.dataIndex], v = vals[item.dataIndex];
+          const i = item.dataIndex, n = ns[i], v = vals[i], sd = sds[i];
           if (!n) return 'No checks yet';
-          const txt = `${Math.abs(v).toFixed(1)}% ${v < 0 ? 'below' : 'above'} the route's average · ${n} check${n === 1 ? '' : 's'}`;
-          return n < MIN_N ? [txt, 'Not enough data to read anything into this yet'] : txt;
+          const lines = [`Average: ${Math.abs(v).toFixed(1)}% ${v < 0 ? 'below' : 'above'} the route's average`];
+          if (sd != null) lines.push(`±1σ: ${sd.toFixed(1)}%  (±1 standard error: ${(sd / Math.sqrt(n)).toFixed(1)}%)`);
+          lines.push(`${n} check${n === 1 ? '' : 's'}${n < MIN_N ? ' · not enough data to read into yet' : ''}`);
+          return lines;
         } } } },
       scales: {
-        x: { grid: { display: false }, ticks: { color: ink, font: { size: 11 } } },
+        x: { offset: true, grid: { display: false }, ticks: { color: ink, font: { size: 11 } } },
         y: { min: -lim, max: lim, grid: { color: c => c.tick.value === 0 ? css('--faint') : grid },
              border: { display: false }, ticks: { color: ink, maxTicksLimit: 5, callback: v => (v > 0 ? '+' : '') + v + '%' } },
       } },
@@ -1096,7 +1121,8 @@ async function renderAnalysis(){
   const note = el('div', { class: 'card banner archived-banner' }, el('b', {}, 'Early data'),
     `Based on ${s.checks} real price checks across ${s.routes} route${s.routes === 1 ? '' : 's'} since ${fmtDate(s.since.slice(0, 10))}. `
     + 'Each price is compared with its own route’s average, so blue means cheaper than usual and red means pricier. '
-    + 'Patterns firm up after a few hundred checks; faded bars have too few checks to trust.');
+    + 'Dots are averages and whiskers show ±1σ (the spread of prices in that group). '
+    + 'Patterns firm up after a few hundred checks; faded dots have too few checks to trust.');
   const plot = (title, sub) => { const cv = el('canvas', { role: 'img', 'aria-label': title });
     return [el('div', { class: 'card an-card' }, el('h3', {}, title), el('p', { class: 'sub' }, sub), el('div', { class: 'plot' }, cv)), cv]; };
   const [dowCard, dowCv] = plot('Price by day of the week', 'Day the fare was checked, vs. the route’s average');
@@ -1128,7 +1154,7 @@ async function renderAnalysis(){
   const SLOTS = ['Morning', 'Afternoon', 'Evening', 'Night'];
   relChart(timeCv, SLOTS, SLOTS.map(sl => d.by_time.find(r => r.slot === sl)));
   const OUT = ['0–7 days', '1–2 weeks', '2–4 weeks', '1–2 months', '2–3 months', '3–6 months', '6+ months'];
-  relChart(outCv, OUT, OUT.map(l => d.by_days_out.find(r => r.label === l)));
+  relChart(outCv, OUT, OUT.map(l => d.by_days_out.find(r => r.label === l)), { connect: true });
 }
 
 // ── add / edit trip ──
