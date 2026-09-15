@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Flight price tracker — Delta.com → GitHub Pages dashboard."""
 
-import asyncio, json, re, shutil, smtplib, socket, subprocess, sys, os, time
-from datetime import datetime, timezone
+import asyncio, contextlib, json, re, shutil, smtplib, socket, subprocess, sys, os, time, traceback
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -44,7 +44,23 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS price_history (
 );
 CREATE INDEX IF NOT EXISTS price_history_trip_time ON price_history (trip_id, scraped_at);
 -- synthetic rows are gap fill-ins: shown on the dashboard, ignored by alerts and the daily limit
-ALTER TABLE price_history ADD COLUMN IF NOT EXISTS synthetic BOOLEAN NOT NULL DEFAULT FALSE;"""
+ALTER TABLE price_history ADD COLUMN IF NOT EXISTS synthetic BOOLEAN NOT NULL DEFAULT FALSE;
+-- on-demand checks (first price for a newly added trip) don't count toward the twice-daily limit
+ALTER TABLE price_history ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'scheduled';
+CREATE TABLE IF NOT EXISTS route_status (
+    route_id   TEXT PRIMARY KEY,
+    status     TEXT NOT NULL,
+    detail     TEXT,
+    checked_at TIMESTAMP NOT NULL
+);
+CREATE TABLE IF NOT EXISTS check_requests (
+    id           SERIAL PRIMARY KEY,
+    route_id     TEXT NOT NULL,
+    requested_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+    started_at   TIMESTAMP,
+    finished_at  TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS check_requests_open ON check_requests (route_id) WHERE finished_at IS NULL;"""
 
 def open_tunnel(cfg):
     """When the scraper runs off the AWS box, reach its Postgres through an SSH tunnel."""
@@ -55,17 +71,19 @@ def open_tunnel(cfg):
     proc = subprocess.Popen(
         ["ssh", "-i", str(BASE_DIR / t["key"]), "-N", "-o", "ExitOnForwardFailure=yes",
          "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30",
-         "-L", f"{port}:localhost:5432", f"{t['user']}@{t['host']}"])
+         "-L", f"{port}:localhost:5432", f"{t['user']}@{t['host']}"],
+        # Detached from our stdout so a leftover tunnel can't hold the log file open
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(40):
         if proc.poll() is not None:
-            sys.exit("SSH tunnel to the database failed to start")
+            raise RuntimeError("SSH tunnel to the database failed to start")
         try:
             socket.create_connection(("127.0.0.1", port), timeout=1).close()
             return proc
         except OSError:
             time.sleep(0.5)
     proc.terminate()
-    sys.exit("SSH tunnel to the database timed out")
+    raise RuntimeError("SSH tunnel to the database timed out")
 
 def open_db(cfg):
     conn = psycopg.connect(cfg.get("database_url", "dbname=flighttracker"),
@@ -159,16 +177,27 @@ def chrome_path(cfg):
             return p
     sys.exit("Google Chrome not found; set chrome_path in config.json")
 
+def flight_designators(text):
+    return [f"{c}{int(n)}" for c, n in re.findall(r"([A-Z0-9]{2})\s*(\d{1,4})", (text or "").upper())]
+
 def parse_offers(data, trip):
-    """Cheapest fare in the trip's cabin, limited to its pinned outbound flights if any."""
+    """(result, status, detail): cheapest fare in the trip's cabin, on its pinned outbound flights if any."""
     brand  = CABIN_TO_BRAND.get(trip.get("cabin_class", "main_classic"), "CMAIN")
-    pinned = re.findall(r"DL\s*(\d+)", trip.get("outbound_flights", ""))
-    best = None
-    for offer_set in data["data"]["gqlSearchOffers"]["gqlOffersSets"]:
+    pinned = flight_designators(trip.get("outbound_flights", ""))
+    sets   = data["data"]["gqlSearchOffers"].get("gqlOffersSets") or []
+    if not sets:
+        return None, "no_flights", "Delta has no flights on this route for these dates."
+    fastest = not pinned and trip.get("preference") == "fastest"
+    matched, candidates = False, []
+    for offer_set in sets:
         t = offer_set["trips"][0]
-        nums = [str(s["marketingCarrier"]["carrierNum"]) for s in t["flightSegment"]]
-        if pinned and nums != pinned:
+        flights = [f'{seg["marketingCarrier"]["carrierCode"]}{int(seg["marketingCarrier"]["carrierNum"])}'
+                   for seg in t["flightSegment"]]
+        if pinned and flights != pinned:
             continue
+        matched = True
+        tt = t.get("totalTripTime") or {}
+        minutes = tt.get("dayCnt", 0) * 1440 + tt.get("hourCnt", 0) * 60 + tt.get("minuteCnt", 0)
         for offer in offer_set["offers"]:
             props = offer["additionalOfferProperties"]
             if props.get("dominantSegmentBrandId") != brand or props.get("soldOut"):
@@ -176,18 +205,29 @@ def parse_offers(data, trip):
             amt = re.search(r'"roundedCurrencyAmt": (\d+)', json.dumps(offer))
             if not amt:
                 continue
-            price = float(amt.group(1))
-            if best is None or price < best["price"]:
-                best = {
-                    "price":       price,
-                    "airline":     "Delta",
-                    "fare_class":  BRAND_NAMES.get(brand, brand),
-                    "stops":       str(t.get("stopCnt", "")),
-                    "depart_time": t["scheduledDepartureLocalTs"][11:16],
-                    "arrive_time": t["scheduledArrivalLocalTs"][11:16],
-                    "flights":     " / ".join(f"DL{n}" for n in nums),
-                }
-    return best
+            candidates.append((minutes, float(amt.group(1)), t, flights))
+    best = None
+    if candidates:
+        # Fastest = shortest total travel time, ties to the cheaper fare; otherwise cheapest fare
+        minutes, price, t, flights = min(candidates, key=(lambda c: (c[0], c[1])) if fastest else (lambda c: (c[1], c[0])))
+        best = {
+            "price":       price,
+            "airline":     "Delta",
+            "fare_class":  BRAND_NAMES.get(brand, brand),
+            "stops":       str(t.get("stopCnt", "")),
+            "depart_time": t["scheduledDepartureLocalTs"][11:16],
+            "arrive_time": t["scheduledArrivalLocalTs"][11:16],
+            "flights":     " / ".join(flights),
+        }
+    if pinned and not matched:
+        return None, "flights_not_found", f"Delta didn't offer {' / '.join(pinned)} on these dates."
+    if not best:
+        where = "these flights" if pinned else "this route"
+        return None, "cabin_unavailable", f"{BRAND_NAMES.get(brand, brand)} isn't available on {where} for these dates."
+    return best, "ok", None
+
+class AirportNotServed(Exception):
+    pass
 
 async def pick_airport(page, which, code):
     btn = page.locator(f"[id$='-{which}-button'] >> visible=true").first
@@ -197,6 +237,10 @@ async def pick_airport(page, which, code):
     await page.wait_for_timeout(1000)
     await page.keyboard.type(code, delay=120)
     option = page.locator("li[role=option] >> visible=true").filter(has_text=re.compile(rf"^\s*{code}\b"))
+    try:
+        await option.first.wait_for(timeout=8000)
+    except Exception:
+        raise AirportNotServed(code)
     await option.first.click()
     await page.wait_for_timeout(800)
 
@@ -256,25 +300,29 @@ async def search_trip(page, trip):
                 break
             await page.wait_for_timeout(1000)
         if not offers:
-            print(f"  No fares returned (page: {await page.title()!r})")
+            title = await page.title()
+            print(f"  No fares returned (page: {title!r})")
             await page.screenshot(path=str(BASE_DIR / f"debug_{trip['id']}.png"))
-            return None
-        result = parse_offers(offers[0], trip)
+            return None, "error", f"Delta returned no results (page: {title})"
+        result, status, detail = parse_offers(offers[0], trip)
         if result:
             print(f"  → ${result['price']:,.0f} {result['fare_class']}  {result['flights']}  "
                   f"{result['depart_time']}→{result['arrive_time']}")
         else:
-            print("  Fares returned, but none in the requested cabin/flights.")
-        return result
+            print(f"  {status}: {detail}")
+        return result, status, detail
+    except AirportNotServed as e:
+        print(f"  Delta's search doesn't offer airport {e}")
+        return None, "airport_not_served", f"Delta doesn't fly to or from {e}."
     except Exception as e:
         print(f"  Scrape error: {str(e).splitlines()[0]}")
         await page.screenshot(path=str(BASE_DIR / f"debug_{trip['id']}.png"))
-        return None
+        return None, "error", str(e).splitlines()[0][:200]
     finally:
         page.remove_listener("response", on_response)
 
 async def scrape_trips(cfg, trips):
-    """Search every trip in one Chrome session; returns {trip_id: result or None}."""
+    """Search every trip in one Chrome session; returns {trip_id: (result, status, detail)}."""
     chrome = subprocess.Popen(
         [chrome_path(cfg), f"--remote-debugging-port={CDP_PORT}",
          f"--user-data-dir={BASE_DIR / 'chrome-profile'}",
@@ -298,7 +346,7 @@ async def scrape_trips(cfg, trips):
                 print(f"\n── {trip.get('label', trip['id'])} ──")
                 for attempt in range(2):
                     results[trip["id"]] = await search_trip(page, trip)
-                    if results[trip["id"]]:
+                    if results[trip["id"]][1] != "error":
                         break
                     if attempt == 0:
                         print("  Retrying...")
@@ -589,20 +637,75 @@ def push_to_github(cfg, html_content):
 # ── Main ──────────────────────────────────────────────────────────────────────
 WATCHLIST_URL = "https://raw.githubusercontent.com/drgian/AirfareTracker/gh-pages/watchlist.json"
 
+LOCK_FILE = BASE_DIR / "scrape.lock"
+
+@contextlib.contextmanager
+def scrape_lock(wait_seconds=1500):
+    """Only one Chrome session may use the profile at a time (scheduled run vs. worker)."""
+    deadline = time.time() + wait_seconds
+    while True:
+        try:
+            fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                if time.time() - LOCK_FILE.stat().st_mtime > 1800:   # left behind by a crashed run
+                    LOCK_FILE.unlink()
+                    continue
+            except FileNotFoundError:
+                continue
+            if time.time() > deadline:
+                raise TimeoutError("another price check is still running")
+            time.sleep(5)
+    try:
+        yield
+    finally:
+        LOCK_FILE.unlink(missing_ok=True)
+
+def user_route_trips(conn):
+    """One trip dict per distinct route added on the website, future departures only."""
+    return [
+        {"id": r["route_id"], "label": r["label"], "origin": r["origin"], "destination": r["destination"],
+         "travel_date": r["travel_date"].isoformat(), "return_date": r["return_date"].isoformat(),
+         "outbound_flights": r["outbound_flights"], "cabin_class": r["cabin_class"],
+         "preference": r["preference"]}
+        for r in conn.execute("SELECT DISTINCT ON (route_id) * FROM user_trips "
+                              "WHERE travel_date > %s ORDER BY route_id, id", (utcnow().date(),))
+    ]
+
+def record_result(conn, cfg, trip, outcome, legacy, source="scheduled"):
+    """Save one check's outcome, update the route's status, and send alerts. Returns True if priced."""
+    result, status, detail = outcome
+    now = utcnow()
+    prev = conn.execute(
+        "SELECT price_usd FROM price_history WHERE trip_id=%s AND price_usd IS NOT NULL "
+        "AND NOT synthetic ORDER BY scraped_at DESC LIMIT 1", (trip["id"],)).fetchone()
+    conn.execute(
+        "INSERT INTO route_status (route_id, status, detail, checked_at) VALUES (%s,%s,%s,%s) "
+        "ON CONFLICT (route_id) DO UPDATE SET status=EXCLUDED.status, detail=EXCLUDED.detail, "
+        "checked_at=EXCLUDED.checked_at", (trip["id"], status, detail, now))
+    if not result:
+        conn.execute("INSERT INTO price_history (trip_id, scraped_at, notes, source) VALUES (%s,%s,%s,%s)",
+                     (trip["id"], now, f"check failed: {status}", source))
+        return False
+    conn.execute(
+        "INSERT INTO price_history "
+        "(trip_id, scraped_at, price_usd, airline, stops, depart_time, arrive_time, notes, flights, source) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (trip["id"], now, result["price"], result["airline"], result["stops"], result["depart_time"],
+         result["arrive_time"], result["fare_class"], result["flights"], source))
+    fire_alerts(cfg, alert_recipients(cfg, conn, trip, legacy), trip,
+                result["price"], prev["price_usd"] if prev else None)
+    return True
+
 async def run(cfg):
     conn = open_db(cfg)
     sync_repo(cfg)
     trips = json.loads((REPO_DIR / "watchlist.json").read_text(encoding="utf-8")).get("trips", [])
     legacy_ids = {t["id"] for t in trips}
-    # Routes added by users on flightfare.io/app; identical searches share one route_id
-    user_routes = [
-        {"id": r["route_id"], "label": r["label"], "origin": r["origin"], "destination": r["destination"],
-         "travel_date": r["travel_date"].isoformat(), "return_date": r["return_date"].isoformat(),
-         "outbound_flights": r["outbound_flights"], "cabin_class": r["cabin_class"]}
-        for r in conn.execute("SELECT DISTINCT ON (route_id) * FROM user_trips "
-                              "WHERE travel_date > %s ORDER BY route_id, id", (utcnow().date(),))
-        if r["route_id"] not in legacy_ids
-    ]
+    user_routes = [t for t in user_route_trips(conn) if t["id"] not in legacy_ids]
 
     max_per_day = cfg.get("max_runs_per_day", 2)
     today = utcnow().date()
@@ -610,7 +713,7 @@ async def run(cfg):
     for trip in trips + user_routes:
         n = conn.execute(
             "SELECT COUNT(*) AS n FROM price_history WHERE trip_id=%s AND scraped_at::date=%s "
-            "AND price_usd IS NOT NULL AND NOT synthetic",
+            "AND price_usd IS NOT NULL AND NOT synthetic AND source='scheduled'",
             (trip["id"], today),
         ).fetchone()["n"]
         if n >= max_per_day:
@@ -618,38 +721,68 @@ async def run(cfg):
         else:
             due.append(trip)
 
-    results = await scrape_trips(cfg, due) if due else {}
+    if due:
+        with scrape_lock():
+            results = await scrape_trips(cfg, due)
+    else:
+        results = {}
 
     any_scraped = False
     for trip in due:
-        prev = conn.execute(
-            "SELECT price_usd FROM price_history WHERE trip_id=%s AND price_usd IS NOT NULL "
-            "AND NOT synthetic ORDER BY scraped_at DESC LIMIT 1",
-            (trip["id"],),
-        ).fetchone()
-        result = results.get(trip["id"])
-        now = utcnow()
-        if result:
-            conn.execute(
-                "INSERT INTO price_history "
-                "(trip_id, scraped_at, price_usd, airline, stops, depart_time, arrive_time, notes, flights) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (trip["id"], now, result["price"], result["airline"], result["stops"],
-                 result["depart_time"], result["arrive_time"], result["fare_class"], result["flights"]),
-            )
-            any_scraped = True
-            fire_alerts(cfg, alert_recipients(cfg, conn, trip, trip["id"] in legacy_ids), trip,
-                        result["price"], prev["price_usd"] if prev else None)
-        else:
-            conn.execute(
-                "INSERT INTO price_history (trip_id, scraped_at, notes) VALUES (%s,%s,'scrape failed')",
-                (trip["id"], now),
-            )
+        outcome = results.get(trip["id"], (None, "error", "not searched"))
+        any_scraped |= record_result(conn, cfg, trip, outcome, trip["id"] in legacy_ids)
 
     if any_scraped:
         print("\n── Updating dashboard ──")
         push_to_github(cfg, generate_html(conn, trips))
     conn.close()
+
+WORKER_PORT = 55433
+
+async def worker(cfg):
+    """Always-on loop: price newly added trips within a minute or two of being added."""
+    # Separate tunnel port from the scheduled runs, which may start while the worker is connected
+    if cfg.get("ssh_tunnel"):
+        old = cfg["ssh_tunnel"].get("local_port", 55432)
+        cfg = {**cfg, "ssh_tunnel": {**cfg["ssh_tunnel"], "local_port": WORKER_PORT},
+               "database_url": cfg["database_url"].replace(f"port={old}", f"port={WORKER_PORT}")}
+    print(f"[{utcnow():%Y-%m-%d %H:%M}Z] worker started", flush=True)
+    tunnel = conn = None
+    while True:
+        try:
+            if tunnel is None or tunnel.poll() is not None:
+                tunnel, conn = open_tunnel(cfg), None
+            if conn is None or conn.closed:
+                conn = open_db(cfg)
+            wanted = {r["route_id"] for r in conn.execute(
+                "SELECT DISTINCT route_id FROM check_requests WHERE finished_at IS NULL AND requested_at > %s",
+                (utcnow() - timedelta(hours=6),))}
+            if wanted:
+                trips = [t for t in user_route_trips(conn) if t["id"] in wanted]
+                print(f"[{utcnow():%Y-%m-%d %H:%M}Z] checking {len(trips)} new trip(s)", flush=True)
+                conn.execute("UPDATE check_requests SET started_at=%s WHERE finished_at IS NULL "
+                             "AND route_id = ANY(%s)", (utcnow(), list(wanted)))
+                if trips:
+                    with scrape_lock():
+                        results = await scrape_trips(cfg, trips)
+                    for t in trips:
+                        record_result(conn, cfg, t, results.get(t["id"], (None, "error", "not searched")),
+                                      legacy=False, source="on-demand")
+                conn.execute("UPDATE check_requests SET finished_at=%s WHERE finished_at IS NULL "
+                             "AND route_id = ANY(%s)", (utcnow(), list(wanted)))
+                sys.stdout.flush()
+        except Exception:
+            traceback.print_exc()
+            sys.stdout.flush()
+            for closer in (lambda: conn and conn.close(), lambda: tunnel and tunnel.terminate()):
+                try:
+                    closer()
+                except Exception:
+                    pass
+            tunnel = conn = None
+            await asyncio.sleep(30)
+            continue
+        await asyncio.sleep(15)
 
 async def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -660,6 +793,8 @@ async def main():
         await scrape_trips(cfg, trips)
         print("\nDry run: nothing saved, emailed or published.")
         return
+    if "--worker" in sys.argv:
+        return await worker(cfg)
     tunnel = open_tunnel(cfg)
     try:
         if "--publish" in sys.argv:
