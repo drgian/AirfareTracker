@@ -387,12 +387,15 @@ $('add-form').addEventListener('submit', async e => {
 });
 
 // ── boot ──
-(async () => {
+async function boot(){
   const token = new URLSearchParams(location.hash.slice(1)).get('login');
   if (token) return verify(token);
   if (!store.get('ff-session')) return show('signup');
   try { await loadApp(); } catch { show('signup'); }
-})();
+}
+// A sign-in link opened in a tab already on this page changes only the hash, which doesn't reload it
+window.addEventListener('hashchange', boot);
+boot();
 </script>
 </body>
 </html>
