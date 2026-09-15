@@ -8,10 +8,10 @@
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--border:#e3e6eb;--text:#111827;--muted:#6b7280;--faint:#9ca3af;
   --accent:#c8102e;--accent-ink:#fff;--navy:#003366;--line:#003366;--fill:rgba(0,51,102,.07);--grid:rgba(17,24,39,.06);
-  --up:#b91c1c;--down:#15803d;--danger:#b91c1c;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04)}
+  --up:#c8102e;--down:#1f6fd1;--hi:#c8102e;--lo:#1f6fd1;--danger:#b91c1c;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04)}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--border:#2b3240;--text:#e6edf3;--muted:#9aa4b2;
   --faint:#6e7681;--accent:#e0283f;--navy:#9dbbe3;--line:#8fb2e0;--fill:rgba(143,178,224,.12);--grid:rgba(230,237,243,.07);
-  --up:#f87171;--down:#4ade80;--danger:#f87171;--shadow:none}}
+  --up:#ff5a6a;--down:#5aa2ff;--hi:#ff5a6a;--lo:#5aa2ff;--danger:#f87171;--shadow:none}}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
 button,input,select{font:inherit;color:inherit}
@@ -63,6 +63,7 @@ header.top{display:flex;align-items:center;justify-content:space-between;padding
 .stat .k{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .stat .v{font-size:1.55rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
 .stat .v.up{color:var(--up)}.stat .v.down{color:var(--down)}.stat .v.flat{color:var(--muted)}
+.stat .v.hi{color:var(--hi)}.stat .v.lo{color:var(--lo)}
 .chart{padding:14px 14px 8px;margin-bottom:12px;height:300px}
 .chart canvas{width:100%!important;height:100%!important}
 details.hist{margin-bottom:14px}
@@ -93,8 +94,14 @@ dialog h3{margin-bottom:4px}
 .field input,.field select{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.95rem}
 .field input.code{text-transform:uppercase;letter-spacing:.08em}
 .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
-@media (max-width:560px){#acct-email{display:none}}
+#acct-email{max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:560px){.acct .who{display:none}}
 .settings .note{flex-basis:100%;color:var(--muted);font-size:.82rem;margin-top:-4px}
+.stack{display:flex;flex-direction:column;gap:8px;max-width:360px;margin:0 auto;text-align:left}
+.stack input{padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.stack input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.stack .btn{padding:11px 18px;border-radius:10px;margin-top:4px}
+.links{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:.86rem}
 .switch{margin-top:14px;font-size:.9rem;color:var(--muted)}
 .switch button{font-weight:650;color:var(--accent);padding:0 2px}
 .signin-card{max-width:440px;margin:10vh auto 0;padding:30px 28px;text-align:center}
@@ -126,7 +133,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 <div class="wrap">
   <header class="top">
     <a class="brand" href="./">✈ FlightFare</a>
-    <div class="acct" id="acct" hidden><span id="acct-email"></span><button class="btn link" id="logout">Sign out</button></div>
+    <div class="acct" id="acct" hidden><span class="who">Signed in as</span><b id="acct-email"></b><button class="btn link" id="logout">Sign out</button></div>
     <button class="btn" id="signin-top" hidden>Sign in</button>
   </header>
 
@@ -136,12 +143,13 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <span class="delta-only">Delta Air Lines fares only</span>
         <h1>Know the moment your fare changes.</h1>
         <p class="lede">FlightFare checks Delta twice a day for the trips you care about and emails you when the price moves.</p>
-        <form class="signup" id="signup-form">
+        <form class="stack" id="signup-form">
           <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
-          <button class="btn primary" type="submit">Get started</button>
+          <input type="password" id="signup-password" placeholder="Choose a password (8+ characters)" autocomplete="new-password" required minlength="8" aria-label="Password">
+          <button class="btn primary" type="submit">Create account</button>
         </form>
         <div class="err" id="signup-err"></div>
-        <p class="fine">No password. We'll email you a link that signs you in.</p>
+        <p class="fine">We'll email you once to confirm your address.</p>
         <p class="switch">Already a member? <button class="btn link" data-go="signin">Sign in</button></p>
       </div>
       <div class="how">
@@ -154,20 +162,37 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
     <section id="v-signin" hidden>
       <div class="card signin-card">
         <h2>Welcome back</h2>
-        <p class="sub">Enter the email you signed up with and we'll send you a sign-in link.</p>
-        <form class="signup" id="signin-form">
+        <p class="sub">Sign in to see your trips.</p>
+        <form class="stack" id="signin-form">
           <input type="email" id="signin-email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
-          <button class="btn primary" type="submit">Send link</button>
+          <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password" required aria-label="Password">
+          <button class="btn primary" type="submit">Sign in</button>
         </form>
         <div class="err" id="signin-err"></div>
+        <div class="links">
+          <button class="btn link" type="button" id="forgot">Forgot password?</button>
+          <button class="btn link" type="button" id="email-link">Email me a sign-in link instead</button>
+        </div>
         <p class="switch">New to FlightFare? <button class="btn link" data-go="signup">Get started</button></p>
+      </div>
+    </section>
+
+    <section id="v-reset" hidden>
+      <div class="card signin-card">
+        <h2>Choose a new password</h2>
+        <p class="sub">You'll be signed in right after.</p>
+        <form class="stack" id="reset-form">
+          <input type="password" id="reset-password" placeholder="New password (8+ characters)" autocomplete="new-password" required minlength="8" aria-label="New password">
+          <button class="btn primary" type="submit">Save password</button>
+        </form>
+        <div class="err" id="reset-err"></div>
       </div>
     </section>
 
     <section id="v-sent" hidden>
       <div class="notice card">
         <h2>Check your email</h2>
-        <p>We sent a sign-in link to <b id="sent-email"></b>. It expires in 30 minutes.</p>
+        <p><span id="sent-what">We sent a sign-in link to</span> <b id="sent-email"></b>. It expires in 30 minutes.</p>
         <p class="fine">Not there? Check spam, or <button class="btn link" id="sent-back">use a different email</button>.</p>
       </div>
     </section>
@@ -211,7 +236,12 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
       <label class="field">Alert me below ($)<input type="number" name="alert_below" min="1" step="1" placeholder="optional"></label>
       <label class="field full">Specific outbound flights (optional)
         <input name="outbound_flights" placeholder="e.g. DL2547 / DL66" autocomplete="off">
-        <span class="dialog-note">Leave blank to track the cheapest flights on your dates.</span>
+      </label>
+      <label class="field full" id="pref-field">Which flights should we track?
+        <select name="preference">
+          <option value="cheapest" selected>Cheapest: lowest fare on your dates, any times and connections</option>
+          <option value="fastest">Fastest: shortest total travel time, cheapest among those</option>
+        </select>
       </label>
       <label class="field full">Name (optional)<input name="label" maxlength="40" placeholder="e.g. Rome in January"></label>
     </div>
@@ -256,7 +286,7 @@ function el(tag, attrs = {}, ...kids){
   return n;
 }
 function show(view){
-  for (const v of ['signup', 'signin', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
+  for (const v of ['signup', 'signin', 'reset', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
   $('acct').hidden = view !== 'app';
   $('signin-top').hidden = view !== 'signup';
 }
@@ -345,20 +375,47 @@ function makeCombo(host){
 document.querySelectorAll('.combo').forEach(makeCombo);
 
 // ── sign-up / sign-in ──
-function emailForm(formId, inputId, errId, mode){
+function sent(what, email){ $('sent-what').textContent = what; $('sent-email').textContent = email; show('sent'); }
+function onSubmit(formId, errId, handler){
   $(formId).addEventListener('submit', async e => {
     e.preventDefault();
-    const email = $(inputId).value.trim(), btn = e.submitter;
-    $(errId).textContent = ''; btn.disabled = true;
-    try {
-      await api('/auth/request', { method: 'POST', body: JSON.stringify({ email, mode }) });
-      $('sent-email').textContent = email; show('sent');
-    } catch (err) { $(errId).textContent = err.message; }
-    finally { btn.disabled = false; }
+    const btn = e.submitter; $(errId).textContent = ''; if (btn) btn.disabled = true;
+    try { await handler(); } catch (err) { $(errId).textContent = err.message; }
+    finally { if (btn) btn.disabled = false; }
   });
 }
-emailForm('signup-form', 'signup-email', 'signup-err', 'signup');
-emailForm('signin-form', 'signin-email', 'signin-err', 'signin');
+onSubmit('signup-form', 'signup-err', async () => {
+  const email = $('signup-email').value.trim(), password = $('signup-password').value;
+  if (password.length < 8) throw new Error('Use a password with at least 8 characters.');
+  await api('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) });
+  $('signup-password').value = '';
+  sent('To finish creating your account, click the confirmation link we sent to', email);
+});
+onSubmit('signin-form', 'signin-err', async () => {
+  const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({
+    email: $('signin-email').value.trim(), password: $('signin-password').value }) });
+  $('signin-password').value = '';
+  store.set('ff-session', r.session); await loadApp();
+});
+async function emailMe(mode){
+  $('signin-err').textContent = '';
+  const email = $('signin-email').value.trim();
+  if (!email) { $('signin-err').textContent = 'Enter your email above first.'; $('signin-email').focus(); return; }
+  try {
+    await api('/auth/request', { method: 'POST', body: JSON.stringify({ email, mode }) });
+    sent(mode === 'reset' ? 'We sent a password reset link to' : 'We sent a sign-in link to', email);
+  } catch (err) { $('signin-err').textContent = err.message; }
+}
+$('forgot').addEventListener('click', () => emailMe('reset'));
+$('email-link').addEventListener('click', () => emailMe('signin'));
+let resetToken = null;
+onSubmit('reset-form', 'reset-err', async () => {
+  const password = $('reset-password').value;
+  if (password.length < 8) throw new Error('Use a password with at least 8 characters.');
+  const r = await api('/auth/reset', { method: 'POST', body: JSON.stringify({ token: resetToken, password }) });
+  $('reset-password').value = '';
+  store.set('ff-session', r.session); await loadApp();
+});
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
   show(b.dataset.go); $(b.dataset.go + '-email').focus();
 }));
@@ -443,7 +500,7 @@ const PROBLEMS = {
 
 function tripView(t){
   const bits = [`${t.origin} → ${t.destination}`, `${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`, CABIN[t.cabin_class] || t.cabin_class];
-  if (t.outbound_flights) bits.push(t.outbound_flights);
+  bits.push(t.outbound_flights || (t.preference === 'fastest' ? 'Fastest flights' : 'Cheapest flights'));
   const h = t.history;
   const head = el('div', { class: 'trip-head' }, el('h2', {}, t.label),
     el('div', { class: 'right' }, el('span', { class: 'sub' }, bits.join('  ·  ')),
@@ -476,7 +533,7 @@ function tripView(t){
   return el('div', {}, head, problem,
     el('div', { class: 'stats' },
       stat('Latest', money(last.price)), stat('Change', chg[0], chg[1]),
-      stat('Lowest seen', money(Math.min(...prices))), stat('Highest seen', money(Math.max(...prices)))),
+      stat('Lowest seen', money(Math.min(...prices)), 'lo'), stat('Highest seen', money(Math.max(...prices)), 'hi')),
     el('div', { class: 'card chart' }, el('canvas', { id: 'chart', 'aria-label': `Price history for ${t.label}`, role: 'img' })),
     el('p', { class: 'sub', style: 'margin:-4px 0 10px 2px' }, `Last priced ${checked}`),
     historyTable(h),
@@ -530,8 +587,11 @@ function drawChart(t){
   chart = new Chart($('chart'), {
     type: 'line',
     data: { datasets: [{ data: pts, borderColor: line, backgroundColor: css('--fill'), fill: 'start',
-      borderWidth: 2.5, tension: 0.35, cubicInterpolationMode: 'monotone', clip: false, pointRadius: single ? 6 : 3.5, pointHoverRadius: 6,
-      pointBackgroundColor: line, pointBorderColor: css('--card'), pointBorderWidth: 2 }] },
+      borderWidth: 2.5, tension: 0.35, cubicInterpolationMode: 'monotone', clip: false,
+      // Highest price in red, lowest in blue, matching the stat boxes
+      pointRadius: pts.map(p => single ? 6 : (p.y === hi || p.y === lo) ? 6 : 3.5), pointHoverRadius: 7,
+      pointBackgroundColor: pts.map(p => lo === hi ? line : p.y === hi ? css('--hi') : p.y === lo ? css('--lo') : line),
+      pointBorderColor: css('--card'), pointBorderWidth: 2 }] },
     options: {
       maintainAspectRatio: false, animation: false, layout: { padding: { left: 6, right: 10 } },
       interaction: { mode: 'nearest', axis: 'x', intersect: false },
@@ -557,7 +617,9 @@ const dlg = $('trip-dialog'), form = $('trip-form');
 const combos = { origin: document.querySelector('.combo[data-for=origin]'), destination: document.querySelector('.combo[data-for=destination]') };
 let editing = null;
 const normFlights = s => (s.toUpperCase().match(/[A-Z0-9]{2}\s*\d{1,4}/g) || []).map(f => f.replace(/\s+/g, '').replace(/^([A-Z0-9]{2})0*(\d)/, '$1$2')).join(' / ');
-const DEFINING = ['origin', 'destination', 'travel_date', 'return_date', 'outbound_flights', 'cabin_class'];
+const DEFINING = ['origin', 'destination', 'travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'preference'];
+const syncPref = () => { $('pref-field').hidden = !!form.outbound_flights.value.trim(); };
+form.outbound_flights.addEventListener('input', syncPref);
 
 async function openTrip(t = null){
   editing = t;
@@ -569,9 +631,10 @@ async function openTrip(t = null){
   await loadAirports();
   combos.origin.set(t?.origin || ''); combos.destination.set(t?.destination || '');
   if (t) {
-    for (const k of ['travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'label']) form[k].value = t[k] ?? '';
+    for (const k of ['travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'preference', 'label']) form[k].value = t[k] ?? '';
     form.alert_below.value = t.alert_below ?? '';
   }
+  syncPref();
   dlg.showModal();
   if (!t) combos.origin.focus();
 }
@@ -590,7 +653,8 @@ function readForm(){
     const cleaned = f.outbound_flights.toUpperCase().replace(/[A-Z0-9]{2}\s*\d{1,4}/g, '').replace(/[\s\/,+&-]/g, '');
     if (cleaned || !normFlights(f.outbound_flights)) throw new Error('Enter flight numbers like DL2547 / DL66, or leave it blank.');
   }
-  return { ...f, outbound_flights: normFlights(f.outbound_flights), label: f.label.trim(),
+  const outbound = normFlights(f.outbound_flights);
+  return { ...f, outbound_flights: outbound, preference: outbound ? 'cheapest' : f.preference, label: f.label.trim(),
            alert_below: f.alert_below ? Number(f.alert_below) : null };
 }
 function askReplaceOrBoth(t){
@@ -634,7 +698,13 @@ form.addEventListener('submit', async e => {
 
 // ── boot ──
 async function boot(){
-  const token = new URLSearchParams(location.hash.slice(1)).get('login');
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get('reset')) {
+    resetToken = params.get('reset');
+    history.replaceState(null, '', location.pathname);
+    show('reset'); $('reset-password').focus(); return;
+  }
+  const token = params.get('login');
   if (token) return verify(token);
   if (!store.get('ff-session')) return show('signup');
   try { await loadApp(); } catch { show('signup'); }
