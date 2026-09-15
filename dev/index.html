@@ -85,11 +85,13 @@ tr:last-child td{border-bottom:none}
 .empty p{color:var(--muted);margin:6px 0 18px}
 
 /* add-trip dialog */
-dialog{border:none;border-radius:14px;padding:0;background:var(--card);color:var(--text);width:min(520px,calc(100vw - 24px));box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog{margin:auto;max-height:calc(100vh - 24px);overflow:visible;border:none;border-radius:14px;padding:0;background:var(--card);color:var(--text);width:min(600px,calc(100vw - 24px));box-shadow:0 20px 60px rgba(0,0,0,.25)}
 dialog::backdrop{background:rgba(0,0,0,.35)}
 dialog form{padding:22px}
 dialog h3{margin-bottom:4px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.grid2 input,.grid2 select,.grid2 .datebtn{width:100%;min-width:0}
+@media (max-width:480px){.grid2{grid-template-columns:minmax(0,1fr)}dialog form{padding:18px 14px}}
 .field{display:flex;flex-direction:column;gap:4px;font-size:.84rem;color:var(--muted)}
 .field.full{grid-column:1/-1}
 .field input,.field select{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.95rem}
@@ -121,6 +123,27 @@ dialog h3{margin-bottom:4px}
 .gbtn{display:flex;justify-content:center;min-height:44px}
 .devflag{position:fixed;left:0;right:0;top:0;z-index:50;background:#b45309;color:#fff;text-align:center;font:700 .74rem/1.9 system-ui,sans-serif;letter-spacing:.08em}
 body.dev{padding-top:22px}
+.datebtn{width:100%;text-align:left;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.95rem;cursor:pointer}
+.datebtn.empty{color:var(--faint)}
+.rangecal{position:absolute;z-index:6;left:0;right:0;top:calc(100% + 4px);background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.2);padding:12px;user-select:none;touch-action:none}
+.rangecal .nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:.84rem;color:var(--muted)}
+.rangecal .nav button{border:1px solid var(--border);background:var(--card);border-radius:7px;width:30px;height:28px;cursor:pointer;color:var(--text)}
+.rangecal .months{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 18px}
+.rangecal .month h4{margin:0 0 6px;text-align:center;font-size:.9rem;color:var(--navy)}
+.rangecal .grid{display:grid;grid-template-columns:repeat(7,34px);gap:2px 0}
+.rangecal .dow{font-size:.7rem;color:var(--faint);text-align:center;padding-bottom:2px}
+.rangecal .day{height:32px;border:none;background:none;font-size:.84rem;color:var(--text);cursor:pointer;border-radius:0}
+.rangecal .day:disabled{color:var(--faint);opacity:.45;cursor:default}
+.rangecal .day.inrange{background:var(--fill)}
+.rangecal .day.start,.rangecal .day.end{background:var(--navy);color:#fff;border-radius:8px;font-weight:700}
+.rangecal .hint{font-size:.78rem;color:var(--muted);margin-top:8px;text-align:center}
+@media (max-width:640px){.rangecal .month+.month{display:none}.rangecal{padding:10px 6px}.rangecal .grid{grid-template-columns:repeat(7,minmax(0,1fr))}}
+.archived-banner{border-left-color:var(--muted)}
+.tab.archived-tab{color:var(--faint)}
+.arch-list{display:grid;gap:10px}
+.arch-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px}
+.arch-item .meta{color:var(--muted);font-size:.86rem}
+.arch-item .acts{display:flex;gap:8px}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -247,8 +270,11 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
     <div class="grid2">
       <div class="field">From<div class="combo" data-for="origin"></div></div>
       <div class="field">To<div class="combo" data-for="destination"></div></div>
-      <label class="field">Depart<input type="date" name="travel_date" required></label>
-      <label class="field">Return<input type="date" name="return_date" required></label>
+      <div class="field full" style="position:relative">Travel dates
+        <button type="button" class="datebtn empty" id="datebtn">Choose departure and return dates</button>
+        <input type="hidden" name="travel_date"><input type="hidden" name="return_date">
+        <div class="rangecal" id="rangecal" hidden></div>
+      </div>
       <label class="field">Cabin
         <select name="cabin_class">
           <option value="main_classic" selected>Main Classic</option>
@@ -509,7 +535,8 @@ async function loadApp(){
   $('pw-banner').hidden = me.has_password || me.has_google;
   trips = list;
   const remembered = Number(store.get(KEY.trip));
-  selectedId = trips.some(t => t.id === remembered) ? remembered : trips[0]?.id ?? null;
+  const firstActive = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
+  selectedId = trips.some(t => t.id === remembered) ? remembered : firstActive;
   show('app'); render();
   trips.filter(t => t.check_pending).forEach(t => watchCheck(t.id));
 }
@@ -521,12 +548,17 @@ function render(){
     if (chart) { chart.destroy(); chart = null; }
     return renderAdmin();
   }
-  $('tabs').replaceChildren(...trips.map(t => el('button', {
+  const active = trips.filter(t => !t.archived), archived = trips.filter(t => t.archived);
+  const current = trips.find(x => x.id === selectedId);
+  const onArchived = selectedId === 'archived' || current?.archived;
+  $('tabs').replaceChildren(...active.map(t => el('button', {
     class: 'tab', role: 'tab', 'aria-selected': String(t.id === selectedId), onclick: () => select(t.id),
-  }, t.label)));
+  }, t.label)), archived.length ? el('button', { class: 'tab archived-tab', role: 'tab', 'aria-selected': String(onArchived),
+    onclick: () => select('archived') }, `Archived (${archived.length})`) : null);
   if (chart) { chart.destroy(); chart = null; }
-  const t = trips.find(x => x.id === selectedId);
-  $('panel').replaceChildren(t ? tripView(t) : emptyView());
+  if (selectedId === 'archived') { $('panel').replaceChildren(archivedList(archived)); return; }
+  const t = current;
+  $('panel').replaceChildren(t ? tripView(t) : active.length ? (select(active[0].id), '') : emptyView());
   if (t && t.history.length) drawChart(t);
 }
 function replaceTrip(updated){
@@ -552,6 +584,19 @@ function watchCheck(id){
   job.timer = setTimeout(tick, 5000);
 }
 
+function archivedList(list){
+  if (!list.length) return el('div', { class: 'card empty' }, el('h2', {}, 'Nothing archived'));
+  return el('div', {},
+    el('div', { class: 'trip-head' }, el('h2', {}, 'Archived trips'), el('span', { class: 'sub' }, 'Prices are no longer checked for these.')),
+    el('div', { class: 'arch-list' }, ...list.map(t => {
+      const last = t.history[t.history.length - 1];
+      return el('div', { class: 'card arch-item' },
+        el('div', {}, el('b', {}, t.label),
+          el('div', { class: 'meta' }, `${t.origin} → ${t.destination} · ${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`
+            + (last ? ` · last price ${money(last.price)}` : '') + (t.auto_archived ? ' · departed' : ''))),
+        el('div', { class: 'acts' }, el('button', { class: 'btn', onclick: () => select(t.id) }, 'View history'), deleteButton(t)));
+    })));
+}
 function emptyView(){
   return el('div', { class: 'card empty' },
     el('h2', {}, 'No trips yet'),
@@ -580,7 +625,11 @@ function tripView(t){
     ? el('div', { class: 'card banner' }, el('b', {}, PROBLEMS[t.status]),
         `${t.status_detail || ''} Check the details with Edit, or remove this trip.`)
     : null;
-  const settings = settingsView(t);
+  const settings = t.archived ? archivedSettings(t) : settingsView(t);
+  const archivedNote = t.archived
+    ? el('div', { class: 'card banner archived-banner' }, el('b', {}, 'Archived'), 'Prices are no longer being checked for this trip.')
+    : null;
+  if (t.archived && !h.length) return el('div', {}, head, archivedNote, settings);
   if (!h.length) {
     const job = polling.get(t.id);
     let box;
@@ -601,7 +650,7 @@ function tripView(t){
   const chg = delta > 0 ? ['▲ ' + money(delta), 'up'] : delta < 0 ? ['▼ ' + money(-delta), 'down'] : ['$0', 'flat'];
   const stat = (k, v, cls = '') => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k), el('div', { class: 'v ' + cls }, v));
   const checked = when(last.scraped_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  return el('div', {}, head, problem,
+  return el('div', {}, head, archivedNote || problem,
     el('div', { class: 'stats' },
       stat('Latest', money(last.price)), stat('Change', chg[0], chg[1]),
       stat('Lowest seen', money(Math.min(...prices)), 'lo'), stat('Highest seen', money(Math.max(...prices)), 'hi')),
@@ -636,17 +685,33 @@ function settingsView(t){
       } catch (err) { msg.textContent = err.message; }
     } },
     el('label', {}, 'Alert me below $ ', input), el('button', { class: 'btn', type: 'submit' }, 'Save'), msg);
-  const remove = el('button', { class: 'btn link danger', onclick: async () => {
-      if (!confirm(`Stop tracking ${t.label}?`)) return;
-      try { await removeTrip(t.id); render(); } catch (err) { alert(err.message); }
-    } }, 'Stop tracking');
-  return el('div', { class: 'card settings' }, form, remove,
+  const archive = el('button', { class: 'btn', onclick: async () => {
+      if (!confirm(`Archive ${t.label}? We'll stop checking its price, but keep it and its price history under Archived.`)) return;
+      try { replaceTrip(await api(`/trips/${t.id}/archive`, { method: 'POST' })); select('archived'); } catch (err) { alert(err.message); }
+    } }, 'Archive');
+  return el('div', { class: 'card settings' }, form,
+    el('div', { style: 'display:flex;gap:8px' }, archive, deleteButton(t)),
     el('p', { class: 'note' }, "We also email you whenever this trip's price changes."));
+}
+function deleteButton(t){
+  return el('button', { class: 'btn link danger', onclick: async () => {
+    if (!confirm(`Delete ${t.label} and its price history? This can't be undone.`)) return;
+    try { await removeTrip(t.id); render(); } catch (err) { alert(err.message); }
+  } }, 'Delete');
+}
+function archivedSettings(t){
+  const restore = t.auto_archived ? null : el('button', { class: 'btn primary', onclick: async () => {
+      try { replaceTrip(await api(`/trips/${t.id}/restore`, { method: 'POST' })); select(t.id); } catch (err) { alert(err.message); }
+    } }, 'Restore tracking');
+  return el('div', { class: 'card settings' },
+    el('span', { class: 'sub' }, t.auto_archived ? 'This trip was archived automatically because its departure date has passed.'
+                                                 : `Archived ${short(t.archived_at)}. Restore it to start checking prices again.`),
+    el('div', { style: 'display:flex;gap:8px' }, restore, deleteButton(t)));
 }
 async function removeTrip(id){
   await api(`/trips/${id}`, { method: 'DELETE' });
   trips = trips.filter(x => x.id !== id);
-  if (selectedId === id) selectedId = trips[0]?.id ?? null;
+  if (selectedId === id) selectedId = trips.find(t => !t.archived)?.id ?? (trips.length ? 'archived' : null);
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function drawChart(t){
@@ -789,8 +854,6 @@ async function openTrip(t = null){
   form.reset(); $('trip-err').textContent = '';
   $('trip-title').textContent = t ? 'Edit trip' : 'Track a trip';
   $('trip-submit').textContent = t ? 'Save changes' : 'Track trip';
-  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-  form.travel_date.min = tomorrow; form.return_date.min = tomorrow;
   await loadAirports();
   combos.origin.set(t?.origin || ''); combos.destination.set(t?.destination || '');
   if (t) {
@@ -798,12 +861,85 @@ async function openTrip(t = null){
     form.alert_below.value = t.alert_below ?? '';
   }
   syncPref();
+  range.load(t?.travel_date || '', t?.return_date || '');
   dlg.showModal();
   if (!t) combos.origin.focus();
 }
 $('add-open').addEventListener('click', () => openTrip());
 $('trip-cancel').addEventListener('click', () => dlg.close());
-form.travel_date.addEventListener('change', e => { form.return_date.min = e.target.value; });
+// ── date range picker: click departure then return, or drag across; return can't precede departure ──
+const range = (() => {
+  const btn = $('datebtn'), cal = $('rangecal');
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const pretty = s => parse(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  let start = '', end = '', hover = '', view = null, downAt = '';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const first = iso(new Date(today.getTime() + 864e5)), last = iso(new Date(today.getTime() + 330 * 864e5));
+  const label = () => {
+    btn.classList.toggle('empty', !start);
+    btn.textContent = start && end ? `${pretty(start)}  →  ${pretty(end)}` : start ? `${pretty(start)}  →  pick a return date` : 'Choose departure and return dates';
+    form.travel_date.value = start; form.return_date.value = end;
+  };
+  // What to highlight: a drag in progress, a chosen range, or a departure plus the hovered return
+  const shown = () => {
+    if (downAt && hover && hover !== downAt) return downAt < hover ? [downAt, hover] : [hover, downAt];
+    if (downAt) return [downAt, ''];
+    return [start, end || (start && hover > start ? hover : '')];
+  };
+  const month = (y, m) => {
+    const box = el('div', { class: 'month' }, el('h4', {}, new Date(y, m, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })));
+    const grid = el('div', { class: 'grid' }, ...['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => el('div', { class: 'dow' }, d)));
+    for (let i = 0; i < new Date(y, m, 1).getDay(); i++) grid.append(el('div'));
+    const [lo, hi] = shown();
+    for (let d = 1; d <= new Date(y, m + 1, 0).getDate(); d++) {
+      const v = iso(new Date(y, m, d));
+      const cls = ['day', v === lo && 'start', v === hi && 'end', lo && hi && v > lo && v < hi && 'inrange'].filter(Boolean).join(' ');
+      grid.append(el('button', { type: 'button', class: cls, 'data-v': v, disabled: v < first || v > last,
+        'aria-label': parse(v).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) }, d));
+    }
+    box.append(grid); return box;
+  };
+  const paint = () => {
+    const a = new Date(view.getFullYear(), view.getMonth(), 1), b = new Date(a.getFullYear(), a.getMonth() + 1, 1);
+    cal.replaceChildren(
+      el('div', { class: 'nav' },
+        el('button', { type: 'button', 'aria-label': 'Previous month', onclick: () => { view = new Date(a.getFullYear(), a.getMonth() - 1, 1); paint(); } }, '‹'),
+        el('span', {}, !start || end ? 'Pick your departure date' : 'Now pick your return date'),
+        el('button', { type: 'button', 'aria-label': 'Next month', onclick: () => { view = new Date(a.getFullYear(), a.getMonth() + 1, 1); paint(); } }, '›')),
+      el('div', { class: 'months' }, month(a.getFullYear(), a.getMonth()), month(b.getFullYear(), b.getMonth())),
+      el('div', { class: 'hint' }, 'Tip: you can also drag from your departure date to your return date.'));
+  };
+  const finish = (a, b) => { start = a; end = b; hover = ''; label(); if (b) cal.hidden = true; else paint(); };
+  const dayAt = e => {
+    const t = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.day');
+    return t && !t.disabled ? t.dataset.v : '';
+  };
+  cal.addEventListener('pointerdown', e => {
+    const v = dayAt(e); if (!v) return;
+    downAt = v; hover = v; paint(); e.preventDefault();
+  });
+  cal.addEventListener('pointermove', e => {
+    const v = dayAt(e); if (!v || v === hover) return;
+    hover = v; if (downAt || (start && !end)) paint();
+  });
+  window.addEventListener('pointerup', e => {
+    if (!downAt) return;
+    const from = downAt, to = dayAt(e) || hover;
+    downAt = '';
+    if (to && to !== from) return finish(from < to ? from : to, from < to ? to : from);   // dragged across a range
+    // A tap: first tap sets departure; a later tap sets return, or restarts if it's not after departure
+    if (!start || end || from <= start) finish(from, ''); else finish(start, from);
+  });
+  btn.addEventListener('click', () => {
+    if (!cal.hidden) { cal.hidden = true; return; }
+    view = start ? parse(start) : new Date(today.getTime() + 864e5);
+    cal.hidden = false; paint();
+  });
+  // Capture phase: runs before the calendar redraws on press, so presses inside still count as inside
+  document.addEventListener('pointerdown', e => { if (!cal.hidden && !cal.contains(e.target) && e.target !== btn) cal.hidden = true; }, true);
+  return { load(a, b){ start = a; end = b; hover = ''; cal.hidden = true; label(); } };
+})();
 
 function readForm(){
   const f = Object.fromEntries(new FormData(form));
