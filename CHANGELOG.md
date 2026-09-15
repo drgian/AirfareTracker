@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.1 (2026-09-15)
 
 - Smoother price charts: when two checks are under 6 hours apart, the chart plots only the later one, so the line
   doesn't kink sharply. The lowest and highest prices always stay on the chart; the history table lists every check.
