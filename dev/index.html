@@ -374,7 +374,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -628,10 +628,13 @@ function render(){
   const active = trips.filter(t => !t.archived), archived = trips.filter(t => t.archived);
   const current = trips.find(x => x.id === selectedId);
   const onArchived = selectedId === 'archived' || current?.archived;
-  $('tabs').replaceChildren(...active.map(t => el('button', {
+  // replaceChildren would print a null as the text "null", so leave the Archived tab out entirely when unused
+  const tabs = active.map(t => el('button', {
     class: 'tab', role: 'tab', 'aria-selected': String(t.id === selectedId), onclick: () => select(t.id),
-  }, t.label)), archived.length ? el('button', { class: 'tab archived-tab', role: 'tab', 'aria-selected': String(onArchived),
-    onclick: () => select('archived') }, `Archived (${archived.length})`) : null);
+  }, t.label));
+  if (archived.length) tabs.push(el('button', { class: 'tab archived-tab', role: 'tab', 'aria-selected': String(onArchived),
+    onclick: () => select('archived') }, `Archived (${archived.length})`));
+  $('tabs').replaceChildren(...tabs);
   if (chart) { chart.destroy(); chart = null; }
   if (selectedId === 'archived') { $('panel').replaceChildren(archivedList(archived)); return; }
   const t = current;
