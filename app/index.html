@@ -93,6 +93,8 @@ dialog h3{margin-bottom:4px}
 .field input,.field select{padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:.95rem}
 .field input.code{text-transform:uppercase;letter-spacing:.08em}
 .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+@media (max-width:560px){#acct-email{display:none}}
+.settings .note{flex-basis:100%;color:var(--muted);font-size:.82rem;margin-top:-4px}
 footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -322,13 +324,14 @@ function settingsView(t){
         Object.assign(t, updated); msg.textContent = 'Saved.';
       } catch (err) { msg.textContent = err.message; }
     } },
-    'Email me when it changes, and if it drops below $', input, el('button', { class: 'btn', type: 'submit' }, 'Save'), msg);
+    el('label', {}, 'Alert me below $ ', input), el('button', { class: 'btn', type: 'submit' }, 'Save'), msg);
   const remove = el('button', { class: 'btn link danger', onclick: async () => {
       if (!confirm(`Stop tracking ${t.label}?`)) return;
       try { await api(`/trips/${t.id}`, { method: 'DELETE' }); trips = trips.filter(x => x.id !== t.id); selectedId = trips[0]?.id ?? null; render(); }
       catch (err) { alert(err.message); }
     } }, 'Stop tracking');
-  return el('div', { class: 'card settings' }, form, remove);
+  return el('div', { class: 'card settings' }, form, remove,
+    el('p', { class: 'note' }, "We also email you whenever this trip's price changes."));
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function drawChart(t){
@@ -339,10 +342,10 @@ function drawChart(t){
   chart = new Chart($('chart'), {
     type: 'line',
     data: { datasets: [{ data: pts, borderColor: line, backgroundColor: css('--fill'), fill: 'start',
-      borderWidth: 2, stepped: 'after', pointRadius: 4, pointHoverRadius: 6,
+      borderWidth: 2, stepped: 'after', clip: false, pointRadius: 4, pointHoverRadius: 6,
       pointBackgroundColor: line, pointBorderColor: css('--card'), pointBorderWidth: 2 }] },
     options: {
-      maintainAspectRatio: false, animation: false,
+      maintainAspectRatio: false, animation: false, layout: { padding: { left: 6, right: 10 } },
       interaction: { mode: 'nearest', axis: 'x', intersect: false },
       plugins: { legend: { display: false }, tooltip: {
         displayColors: false, padding: 10,
@@ -351,7 +354,7 @@ function drawChart(t){
           label: item => money(item.parsed.y),
         } } },
       scales: {
-        x: { type: 'linear', grid: { display: false }, border: { color: grid },
+        x: { type: 'linear', min: pts[0].x, max: pts[pts.length - 1].x, grid: { display: false }, border: { color: grid },
              ticks: { color: ink, maxTicksLimit: 7, callback: fmtTick } },
         y: { min: Math.floor((lo - pad) / 25) * 25, max: Math.ceil((hi + pad) / 25) * 25,
              grid: { color: grid }, border: { display: false },
