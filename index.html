@@ -116,6 +116,9 @@ dialog h3{margin-bottom:4px}
 .tab.admin-tab{margin-left:auto;color:var(--accent)}
 .userlink{border:none;background:none;padding:0;font-weight:700;color:var(--navy);cursor:pointer;text-align:left}
 .userlink:hover{text-decoration:underline}
+.or{display:flex;align-items:center;gap:10px;color:var(--faint);font-size:.8rem;margin:14px auto 12px;max-width:360px}
+.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--border)}
+.gbtn{display:flex;justify-content:center;min-height:44px}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -137,6 +140,7 @@ dialog h3{margin-bottom:4px}
 footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;line-height:1.7}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async onload="initGoogle()"></script>
 </head>
 <body>
 <div class="wrap">
@@ -158,6 +162,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         </form>
         <div class="err" id="signup-err"></div>
         <p class="fine">We'll email you a link to confirm your address, then you'll choose a password.</p>
+        <div class="google-area" hidden><div class="or">or</div><div class="gbtn" id="g-signup"></div></div>
         <p class="switch">Already a member? <button class="btn link" data-go="signin">Sign in</button></p>
       </div>
       <div class="how">
@@ -177,6 +182,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
           <button class="btn primary" type="submit">Sign in</button>
         </form>
         <div class="err" id="signin-err"></div>
+        <div class="google-area" hidden><div class="or">or</div><div class="gbtn" id="g-signin"></div></div>
         <div class="links">
           <button class="btn link" type="button" id="forgot">Forgot password?</button>
           <button class="btn link" type="button" id="email-link">Email me a sign-in link instead</button>
@@ -435,6 +441,24 @@ onSubmit('reset-form', 'reset-err', async () => {
   await loadApp();
 });
 $('pw-create').addEventListener('click', () => askForPassword());
+
+// ── Sign in with Google (Google Identity Services) ──
+const GOOGLE_CLIENT_ID = '';
+function initGoogle(){
+  if (!GOOGLE_CLIENT_ID || !window.google?.accounts?.id) return;
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, ux_mode: 'popup', auto_select: false,
+    callback: async ({ credential }) => {
+      const err = $('v-signin').hidden ? $('signup-err') : $('signin-err');
+      err.textContent = '';
+      try {
+        const r = await api('/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
+        store.set('ff-session', r.session); await loadApp();
+      } catch (e) { err.textContent = e.message; }
+    } });
+  for (const [id, text] of [['g-signup', 'signup_with'], ['g-signin', 'signin_with']])
+    google.accounts.id.renderButton($(id), { theme: 'outline', size: 'large', shape: 'pill', text, width: 300 });
+  document.querySelectorAll('.google-area').forEach(a => a.hidden = false);
+}
 function askForPassword(){
   $('reset-title').textContent = 'Create your password';
   $('reset-sub').textContent = "You'll use it with your email to sign in next time.";
@@ -471,7 +495,7 @@ async function loadApp(){
   ME = me;
   $('acct-email').textContent = me.email;
   $('admin-open').hidden = !me.is_admin;
-  $('pw-banner').hidden = me.has_password;
+  $('pw-banner').hidden = me.has_password || me.has_google;
   trips = list;
   const remembered = Number(store.get('ff-trip'));
   selectedId = trips.some(t => t.id === remembered) ? remembered : trips[0]?.id ?? null;
