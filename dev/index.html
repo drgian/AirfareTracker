@@ -144,6 +144,12 @@ body.dev{padding-top:22px}
 .arch-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px}
 .arch-item .meta{color:var(--muted);font-size:.86rem}
 .arch-item .acts{display:flex;gap:8px}
+.fbbtn{margin:0 0 10px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:7px 16px;font-weight:600;font-size:.86rem;cursor:pointer}
+.fbbtn:hover{border-color:var(--accent);color:var(--accent)}
+#feedback-dialog textarea{width:100%;min-height:130px;resize:vertical;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+.fb-item{padding:12px 16px}
+.fb-item .meta{color:var(--muted);font-size:.8rem;margin-bottom:4px}
+.fb-item p{white-space:pre-wrap;margin:0}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -257,6 +263,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
     </section>
   </main>
   <footer>
+    <button class="fbbtn" id="feedback-open" type="button">💬 Send feedback</button><br>
     Tracks <b>Delta Air Lines</b> fares only. Fares are round-trip per passenger incl. taxes, as shown on delta.com.<br>
     FlightFare is an independent service and is not affiliated with Delta Air Lines.<br>
     <a href="/privacy.html" style="color:inherit">Privacy</a> · <a href="/terms.html" style="color:inherit">Terms</a>
@@ -300,6 +307,21 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
     <div class="actions">
       <button class="btn" type="button" id="trip-cancel">Cancel</button>
       <button class="btn primary" type="submit" id="trip-submit">Track trip</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="feedback-dialog">
+  <form id="feedback-form" style="padding:22px" novalidate>
+    <h3>Send feedback</h3>
+    <p class="sub" style="margin:4px 0 12px">Ideas, problems, anything. It goes straight to the person who runs FlightFare.</p>
+    <textarea id="fb-message" maxlength="4000" placeholder="What's on your mind?" aria-label="Your feedback"></textarea>
+    <input type="email" id="fb-email" placeholder="Your email (optional, if you'd like a reply)" autocomplete="email"
+      style="width:100%;margin-top:8px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
+    <div class="err" id="fb-err"></div>
+    <div class="actions">
+      <button class="btn" type="button" id="fb-cancel">Cancel</button>
+      <button class="btn primary" type="submit" id="fb-send">Send</button>
     </div>
   </form>
 </dialog>
@@ -750,6 +772,26 @@ function drawChart(t){
   });
 }
 
+// ── feedback ──
+$('feedback-open').addEventListener('click', () => {
+  $('fb-err').textContent = ''; $('fb-send').disabled = false; $('fb-send').textContent = 'Send';
+  $('fb-email').hidden = !!ME && !$('v-app').hidden;   // signed-in users are identified automatically
+  $('feedback-dialog').showModal(); $('fb-message').focus();
+});
+$('fb-cancel').addEventListener('click', () => $('feedback-dialog').close());
+$('feedback-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const message = $('fb-message').value.trim();
+  if (!message) { $('fb-err').textContent = 'Please write a message.'; return; }
+  $('fb-err').textContent = ''; $('fb-send').disabled = true;
+  try {
+    await api('/feedback', { method: 'POST', body: JSON.stringify({ message, email: $('fb-email').hidden ? '' : $('fb-email').value.trim(),
+      page: $('v-app').hidden ? 'home' : 'dashboard' }) });
+    $('fb-message').value = ''; $('fb-send').textContent = 'Sent. Thank you!';
+    setTimeout(() => $('feedback-dialog').close(), 1200);
+  } catch (err) { $('fb-err').textContent = err.message; $('fb-send').disabled = false; }
+});
+
 // ── admin ──
 $('admin-open').addEventListener('click', () => { selectedId = 'admin'; render(); });
 const ago = iso => {
@@ -762,8 +804,8 @@ const STATUS_TEXT = { flights_not_found: 'flights not offered', cabin_unavailabl
 
 async function renderAdmin(){
   $('panel').replaceChildren(el('div', { class: 'card pending checking' }, 'Loading admin stats…'));
-  let stats, activity, users;
-  try { [stats, activity, users] = await Promise.all([api('/admin/stats'), api('/admin/activity'), api('/admin/users')]); }
+  let stats, activity, users, feedback;
+  try { [stats, activity, users, feedback] = await Promise.all([api('/admin/stats'), api('/admin/activity'), api('/admin/users'), api('/admin/feedback')]); }
   catch (err) { $('panel').replaceChildren(el('div', { class: 'card banner' }, err.message)); return; }
   if (selectedId !== 'admin') return;
   const tile = (k, v, note, cls = '') => el('div', { class: 'card stat' }, el('div', { class: 'k' }, k),
@@ -801,6 +843,12 @@ async function renderAdmin(){
       tile('Page views today', stats.views_today, `${Object.values(stats.views_14d).reduce((a, b) => a + b, 0)} in the last 14 days`)),
     el('div', { class: 'card settings' },
       el('span', {}, el('b', {}, 'System: '), `last scheduled check ${ago(stats.last_scheduled)} · last instant check ${ago(stats.last_on_demand)} · ${stats.queue} waiting in queue · trips with problems: ${problems}`)),
+    el('h3', { class: 'admin-h' }, `Feedback (${feedback.length})`),
+    feedback.length
+      ? el('div', { class: 'arch-list' }, ...feedback.slice(0, 20).map(f => el('div', { class: 'card fb-item' },
+          el('div', { class: 'meta' }, `${short(f.created_at)} · ${f.email || 'anonymous'} · from ${f.page || 'site'}`),
+          el('p', {}, f.message))))
+      : el('div', { class: 'card pending' }, 'No feedback yet.'),
     el('h3', { class: 'admin-h' }, 'Users'),
     table(['Email', 'Joined', 'Last sign-in', 'Trips', 'Email', 'Password', ''], userRows),
     el('h3', { class: 'admin-h' }, 'Recent price checks'),
