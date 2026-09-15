@@ -266,6 +266,11 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
       </div>
     </section>
 
+    <section id="v-private" hidden>
+      <div class="notice card"><h2>This test site is private</h2>
+        <p>You're looking for <a href="https://flightfare.io/">flightfare.io</a>.</p></div>
+    </section>
+
     <section id="v-welcome" hidden>
       <div class="card signin-card">
         <h2>Welcome to FlightFare!</h2>
@@ -399,7 +404,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -422,7 +427,7 @@ function el(tag, attrs = {}, ...kids){
   return n;
 }
 function show(view){
-  for (const v of ['signup', 'signin', 'reset', 'welcome', 'sent', 'verify', 'app']) $('v-' + v).hidden = v !== view;
+  for (const v of ['signup', 'signin', 'reset', 'welcome', 'sent', 'verify', 'app', 'private']) $('v-' + v).hidden = v !== view;
   $('acct').hidden = view !== 'app' && view !== 'welcome';
   $('signin-top').hidden = view !== 'signup';
 }
@@ -434,13 +439,17 @@ async function api(path, opts = {}){
   try { res = await fetch(API + path, { ...opts, headers }); }
   catch { throw new Error("Can't reach FlightFare right now. Check your connection and try again."); }
   if (res.status === 401 && s) { store.set(KEY.session, null); show('signup'); throw new Error('Please sign in again.'); }
+  if (res.status === 403 && DEV) { store.set(KEY.session, null); show('private'); throw new Error('This test site is private.'); }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Something went wrong. Please try again.');
   return body;
 }
 
 $('version').textContent = 'v' + VERSION + (DEV ? ' (dev)' : '');
-if (DEV) { $('devflag').hidden = false; document.body.classList.add('dev'); document.title = 'FlightFare (dev)'; }
+if (DEV) {
+  $('devflag').hidden = false; document.body.classList.add('dev'); document.title = 'FlightFare (dev)';
+  document.head.append(el('meta', { name: 'robots', content: 'noindex, nofollow' }));
+}
 
 // ── airports ──
 let AIRPORTS = null, BY_CODE = null;
@@ -867,8 +876,17 @@ async function removeTrip(id){
   if (selectedId === id) selectedId = trips.some(t => !t.archived) ? 'overview' : (trips.length ? 'archived' : null);
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+// Two checks a few hours apart (say, a re-check soon after a scheduled one) make the smooth line kink sharply,
+// so the chart shows only the later of them. The lowest and highest prices always stay on the chart, and the
+// history table still lists every check.
+const CLOSE_MS = 6 * 36e5;
+function chartPoints(history){
+  const all = history.map(r => ({ x: when(r.scraped_at).getTime(), y: r.price }));
+  const lo = Math.min(...all.map(p => p.y)), hi = Math.max(...all.map(p => p.y));
+  return all.filter((p, i) => i === all.length - 1 || all[i + 1].x - p.x >= CLOSE_MS || p.y === lo || p.y === hi);
+}
 function drawChart(t){
-  const pts = t.history.map(r => ({ x: when(r.scraped_at).getTime(), y: r.price }));
+  const pts = chartPoints(t.history);
   const lo = Math.min(...pts.map(p => p.y)), hi = Math.max(...pts.map(p => p.y)), pad = Math.max(25, (hi - lo) * 0.15);
   const ink = css('--muted'), grid = css('--grid'), line = css('--line');
   const fmtTick = ms => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -1322,7 +1340,11 @@ async function boot(){
   }
   const token = params.get('login');
   if (token) return verify(token);
-  if (!store.get(KEY.session)) return show('signup');
+  if (!store.get(KEY.session)) {
+    // The dev copy is private: signed-out visitors only get the sign-in form (which only accepts the owner)
+    if (DEV) { show('signin'); $('signin-top').hidden = true; document.querySelectorAll('#v-signin .switch').forEach(e => e.remove()); return; }
+    return show('signup');
+  }
   try { await loadApp(); } catch { show('signup'); }
 }
 // A sign-in link opened in a tab already on this page changes only the hash, which doesn't reload it
