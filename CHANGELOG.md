@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Smoother price charts: when two checks are under 6 hours apart, the chart plots only the later one, so the line
+  doesn't kink sharply. The lowest and highest prices always stay on the chart; the history table lists every check.
 - Test copy (flightfare.io/dev/) is private: its API only accepts the emails in `PRIVATE_TO` and answers
   everyone else with "This test site is private."; signed-out visitors see sign-in only; search engines are
   told to skip /dev/ (robots.txt plus a noindex tag). The live site doesn't set `PRIVATE_TO`, so it's unaffected.

@@ -876,8 +876,17 @@ async function removeTrip(id){
   if (selectedId === id) selectedId = trips.some(t => !t.archived) ? 'overview' : (trips.length ? 'archived' : null);
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+// Two checks a few hours apart (say, a re-check soon after a scheduled one) make the smooth line kink sharply,
+// so the chart shows only the later of them. The lowest and highest prices always stay on the chart, and the
+// history table still lists every check.
+const CLOSE_MS = 6 * 36e5;
+function chartPoints(history){
+  const all = history.map(r => ({ x: when(r.scraped_at).getTime(), y: r.price }));
+  const lo = Math.min(...all.map(p => p.y)), hi = Math.max(...all.map(p => p.y));
+  return all.filter((p, i) => i === all.length - 1 || all[i + 1].x - p.x >= CLOSE_MS || p.y === lo || p.y === hi);
+}
 function drawChart(t){
-  const pts = t.history.map(r => ({ x: when(r.scraped_at).getTime(), y: r.price }));
+  const pts = chartPoints(t.history);
   const lo = Math.min(...pts.map(p => p.y)), hi = Math.max(...pts.map(p => p.y)), pad = Math.max(25, (hi - lo) * 0.15);
   const ink = css('--muted'), grid = css('--grid'), line = css('--line');
   const fmtTick = ms => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
