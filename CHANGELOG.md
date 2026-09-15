@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Watchdog on the AWS server (`deploy/watchdog.py`, every 5 minutes): emails when the Windows price checker
+  goes offline for 10+ minutes, when it's back, and when an 8 AM / 6 PM check saves no prices.
+
 ## 1.0.1 (2026-09-15)
 
 - Fix: the word "null" appeared under the header for anyone without archived trips.

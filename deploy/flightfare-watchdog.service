@@ -1,0 +1,10 @@
+[Unit]
+Description=FlightFare watchdog (emails when the price checker needs attention)
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+EnvironmentFile=/etc/flightfare/api.env
+Environment=WATCHDOG_TO=bigdaddyontheair@gmail.com
+ExecStart=/opt/flightfare/api/venv/bin/python /opt/flightfare/watchdog/watchdog.py

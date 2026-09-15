@@ -14,6 +14,7 @@ FlightFare is an independent service and is not affiliated with Delta Air Lines.
 | Database | PostgreSQL on the same EC2 server (`flighttracker`; test copy `flighttracker_dev`) | `deploy/schema.sql` |
 | Price checker | Windows PC on a home connection (Delta blocks cloud IPs) | `tracker/` |
 | Email | Resend, sending as alerts@flightfare.io | — |
+| Watchdog | AWS server, systemd timer every 5 min; emails when the price checker needs attention | `deploy/watchdog.py` |
 
 The price checker runs two ways on the Windows PC:
 - **Scheduled** (Task Scheduler "FlightTracker", 8 AM and 6 PM Eastern): checks every active trip.
