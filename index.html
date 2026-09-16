@@ -179,6 +179,18 @@ body.dev{padding-top:22px}
 .seg button{border:none;background:var(--card);padding:6px 12px;font-weight:600;font-size:.84rem;cursor:pointer;color:var(--muted)}
 .seg button[aria-pressed=true]{background:var(--navy);color:#fff}
 .rolesel{padding:4px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text);font:inherit;font-size:.84rem}
+.alogo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;
+  font:700 10.5px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.04em;color:#fff;flex:none}
+.alogo.DL{background:#003366}.alogo.AA{background:#0d5eaf}.alogo.UA{background:#1c2b5e}
+.alogo.sm{width:20px;height:20px;border-radius:5px;font-size:9px}
+/* a white tile keeps every logo legible in dark mode, whatever background the logo itself has */
+.alogo-img{height:20px;width:auto;max-width:96px;object-fit:contain;flex:none;display:block;
+  background:#fff;padding:2px;border-radius:5px;box-sizing:content-box}
+.alogo-img.sm{height:15px;max-width:70px;padding:1.5px;border-radius:4px}
+.apicks{display:flex;gap:8px;flex-wrap:wrap}
+.apick{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;
+  background:var(--card);color:inherit;font:inherit;font-weight:600;cursor:pointer}
+.apick[aria-pressed="true"]{border-color:var(--navy);box-shadow:0 0 0 2px rgba(0,51,102,.18)}
 .delta-only{display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:.82rem;font-weight:650;letter-spacing:.01em}
 .delta-only::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .trip-head .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -214,7 +226,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
   <main>
     <section id="v-signup" hidden>
       <div class="hero">
-        <span class="delta-only">Delta Air Lines fares only</span>
+        <span class="delta-only">Delta, American &amp; United fares</span>
         <h1>Know the moment your fare changes.</h1>
         <p class="lede">FlightFare checks Delta twice a day for the trips you care about and emails you when the price moves.</p>
         <form class="signup" id="signup-form">
@@ -314,8 +326,9 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
   </main>
   <footer>
     <button class="fbbtn" id="feedback-open" type="button">💬 Send feedback</button><br>
-    Tracks <b>Delta Air Lines</b> fares only. Fares are round-trip per passenger incl. taxes, as shown on delta.com.<br>
-    FlightFare is an independent service and is not affiliated with Delta Air Lines.<br>
+    Tracks <b>Delta</b>, <b>American</b> and <b>United</b> fares. Fares are round-trip per passenger incl. taxes,
+    as shown on the airline's own site.<br>
+    FlightFare is an independent service and is not affiliated with Delta Air Lines, American Airlines or United Airlines.<br>
     <a href="/privacy.html" style="color:inherit">Privacy</a> · <a href="/terms.html" style="color:inherit">Terms</a> · <span id="version"></span>
   </footer>
 </div>
@@ -323,7 +336,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 <dialog id="trip-dialog">
   <form id="trip-form" novalidate>
     <h3 id="trip-title">Track a trip</h3>
-    <p class="sub">Delta Air Lines round trips only.</p>
+    <p class="sub">Round trips only. Prices come straight from the airline.</p>
     <div class="grid2">
       <div class="field">From<div class="combo" data-for="origin"></div></div>
       <div class="field">To<div class="combo" data-for="destination"></div></div>
@@ -332,14 +345,12 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <input type="hidden" name="travel_date"><input type="hidden" name="return_date">
         <div class="rangecal" id="rangecal" hidden></div>
       </div>
+      <div class="field full">Airline
+        <div class="apicks" id="airline-picks" role="group" aria-label="Airline"></div>
+        <input type="hidden" name="airline" value="DL">
+      </div>
       <label class="field">Cabin
-        <select name="cabin_class">
-          <option value="main_classic" selected>Main Classic</option>
-          <option value="main_basic">Main Basic</option>
-          <option value="main_extra">Main Extra</option>
-          <option value="comfort">Comfort</option>
-          <option value="first">First</option>
-        </select>
+        <select name="cabin_class" id="cabin-select"></select>
       </label>
       <label class="field">Alert me below ($)<input type="number" name="alert_below" min="1" step="1" placeholder="optional"></label>
       <label class="field full">Specific outbound flights (optional)
@@ -404,7 +415,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.1.2';
+const VERSION = '1.2.0';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -632,7 +643,8 @@ async function saveHome(code){
   ME.home_airport = r.home_airport;
 }
 async function loadApp(){
-  const [me, list] = await Promise.all([api('/me'), api('/trips')]);
+  // Airline names and logos are needed by the first paint, not just by the trip form
+  const [me, list] = await Promise.all([api('/me'), api('/trips'), loadAirlineList().then(findLogos)]);
   ME = me;
 
   $('acct-email').textContent = me.email;
@@ -731,7 +743,7 @@ function overview(list){
     return el('div', { class: 'card ov-card', role: 'button', tabindex: '0', onclick: () => select(t.id),
         onkeydown: e => { if (e.key === 'Enter') select(t.id); } },
       el('div', { class: 'top' },
-        el('div', {}, el('h3', {}, t.label),
+        el('div', {}, el('h3', {}, logo(t.airline || 'DL', true), ' ', t.label),
           el('div', { class: 'route' }, `${t.origin} → ${t.destination} · ${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`),
           el('div', { class: 'route' }, t.outbound_flights || (t.preference === 'fastest' ? 'Fastest flights' : 'Cheapest flights'))),
         status),
@@ -755,7 +767,7 @@ function archivedList(list){
     el('div', { class: 'arch-list' }, ...list.map(t => {
       const last = t.history[t.history.length - 1];
       return el('div', { class: 'card arch-item' },
-        el('div', {}, el('b', {}, t.label),
+        el('div', {}, el('b', {}, logo(t.airline || 'DL', true), ' ', t.label),
           el('div', { class: 'meta' }, `${t.origin} → ${t.destination} · ${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`
             + (last ? ` · last price ${money(last.price)}` : '') + (t.auto_archived ? ' · departed' : ''))),
         el('div', { class: 'acts' }, el('button', { class: 'btn', onclick: () => select(t.id) }, 'View history'), deleteButton(t)));
@@ -770,7 +782,45 @@ function emptyView(){
 const money = v => '$' + Math.round(v).toLocaleString();
 const when = iso => new Date(iso + 'Z');
 const fmtDate = d => new Date(d + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-const CABIN = { main_basic: 'Main Basic', main_classic: 'Main Classic', main_extra: 'Main Extra', comfort: 'Comfort', first: 'First' };
+// The API is the authority on which cabins an airline sells; this is the fallback if that call fails.
+let AIRLINES = [
+  { code: 'DL', name: 'Delta', default_cabin: 'main_classic', cabins: [
+    { value: 'main_classic', label: 'Main Classic' }, { value: 'main_basic', label: 'Main Basic' },
+    { value: 'main_extra', label: 'Main Extra' }, { value: 'comfort', label: 'Comfort+' }, { value: 'first', label: 'First' }] },
+  { code: 'AA', name: 'American', default_cabin: 'main', cabins: [
+    { value: 'main', label: 'Main Cabin' }, { value: 'basic', label: 'Basic Economy' },
+    { value: 'main_extra', label: 'Main Cabin Extra' }, { value: 'business', label: 'Business' }] },
+  { code: 'UA', name: 'United', default_cabin: 'main', cabins: [
+    { value: 'main', label: 'United Economy' }, { value: 'basic', label: 'Basic Economy' },
+    { value: 'economy_plus', label: 'Economy Plus' }, { value: 'business', label: 'Business' }] },
+];
+const airlineInfo = code => AIRLINES.find(a => a.code === code) || AIRLINES[0];
+const cabinName = (airline, cabin) => airlineInfo(airline).cabins.find(c => c.value === cabin)?.label || cabin;
+// The airline's own logo when one has been added under /logos/; otherwise our initials badge
+const LOGO_FILES = {};   // code -> filename, filled in by findLogos()
+function logo(code, small){
+  const badge = el('span', { class: 'alogo ' + code + (small ? ' sm' : ''), title: airlineInfo(code).name,
+    'aria-label': airlineInfo(code).name }, code);
+  const file = LOGO_FILES[code];
+  if (!file) return badge;
+  const img = el('img', { class: 'alogo-img' + (small ? ' sm' : ''), src: file, alt: airlineInfo(code).name });
+  img.addEventListener('error', () => img.replaceWith(badge), { once: true });   // missing file: fall back
+  return img;
+}
+// Check once per visit which logo files exist, so a missing one never shows a broken image
+async function findLogos(){
+  await Promise.all(AIRLINES.flatMap(a => ['svg', 'png'].map(ext => {
+    const url = `/logos/${a.code.toLowerCase()}.${ext}`;
+    return new Promise(done => {
+      if (LOGO_FILES[a.code]) return done();
+      const probe = new Image();
+      probe.onload = () => { LOGO_FILES[a.code] = LOGO_FILES[a.code] || url; done(); };
+      probe.onerror = () => done();
+      probe.src = url;
+    });
+  })));
+}
+const CABIN = { main_basic: 'Main Basic', main_classic: 'Main Classic', main_extra: 'Main Extra', comfort: 'Comfort+', first: 'First' };
 const PROBLEMS = {
   flights_not_found: "Those flights aren't available",
   cabin_unavailable: 'That cabin isn’t available',
@@ -779,10 +829,11 @@ const PROBLEMS = {
 };
 
 function tripView(t){
-  const bits = [`${t.origin} → ${t.destination}`, `${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`, CABIN[t.cabin_class] || t.cabin_class];
+  const bits = [`${t.origin} → ${t.destination}`, `${fmtDate(t.travel_date)} – ${fmtDate(t.return_date)}`,
+                cabinName(t.airline || 'DL', t.cabin_class)];
   bits.push(t.outbound_flights || (t.preference === 'fastest' ? 'Fastest flights' : 'Cheapest flights'));
   const h = t.history;
-  const head = el('div', { class: 'trip-head' }, el('h2', {}, t.label),
+  const head = el('div', { class: 'trip-head' }, el('h2', {}, logo(t.airline || 'DL'), ' ', t.label),
     el('div', { class: 'right' }, el('span', { class: 'sub' }, bits.join('  ·  ')),
       el('button', { class: 'btn', onclick: () => openTrip(t) }, 'Edit')));
   const problem = PROBLEMS[t.status] && !t.check_pending
@@ -1182,7 +1233,27 @@ const dlg = $('trip-dialog'), form = $('trip-form');
 const combos = { origin: document.querySelector('.combo[data-for=origin]'), destination: document.querySelector('.combo[data-for=destination]') };
 let editing = null;
 const normFlights = s => (s.toUpperCase().match(/[A-Z0-9]{2}\s*\d{1,4}/g) || []).map(f => f.replace(/\s+/g, '').replace(/^([A-Z0-9]{2})0*(\d)/, '$1$2')).join(' / ');
-const DEFINING = ['origin', 'destination', 'travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'preference'];
+const DEFINING = ['origin', 'destination', 'travel_date', 'return_date', 'airline', 'outbound_flights', 'cabin_class', 'preference'];
+// Pick the airline first; the cabin list is whatever that airline sells
+function setAirline(code, cabin){
+  form.airline.value = code;
+  $('airline-picks').replaceChildren(...AIRLINES.map(a => el('button', {
+    type: 'button', class: 'apick', 'aria-pressed': String(a.code === code),
+    onclick: () => setAirline(a.code),
+  }, logo(a.code), a.name)));
+  const info = airlineInfo(code);
+  const keep = cabin && info.cabins.some(c => c.value === cabin) ? cabin
+             : info.cabins.some(c => c.value === $('cabin-select').value) ? $('cabin-select').value
+             : info.default_cabin;
+  $('cabin-select').replaceChildren(...info.cabins.map(c => el('option', { value: c.value }, c.label)));
+  $('cabin-select').value = keep;
+}
+async function loadAirlineList(){
+  try {
+    const r = await api('/airlines');
+    if (r.airlines?.length) AIRLINES = r.airlines.map(a => ({ ...a, name: a.name.replace(/ Air ?Lines?$/i, '') }));
+  } catch { /* the built-in list stands in */ }
+}
 const syncPref = () => { $('pref-field').hidden = !!form.outbound_flights.value.trim(); };
 form.outbound_flights.addEventListener('input', syncPref);
 
@@ -1191,10 +1262,11 @@ async function openTrip(t = null){
   form.reset(); $('trip-err').textContent = '';
   $('trip-title').textContent = t ? 'Edit trip' : 'Track a trip';
   $('trip-submit').textContent = t ? 'Save changes' : 'Track trip';
-  await loadAirports();
+  await Promise.all([loadAirports(), loadAirlineList().then(findLogos)]);   // cheap after the first call
+  setAirline(t?.airline || 'DL', t?.cabin_class);
   combos.origin.set(t?.origin || (t ? '' : ME?.home_airport || '')); combos.destination.set(t?.destination || '');
   if (t) {
-    for (const k of ['travel_date', 'return_date', 'outbound_flights', 'cabin_class', 'preference', 'label']) form[k].value = t[k] ?? '';
+    for (const k of ['travel_date', 'return_date', 'outbound_flights', 'preference', 'label']) form[k].value = t[k] ?? '';
     form.alert_below.value = t.alert_below ?? '';
   }
   syncPref();
