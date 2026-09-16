@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 (2026-09-15)
+
+- American Airlines and United Airlines fares alongside Delta. Pick the airline on a trip and the cabin list becomes
+  that airline's own cabins: Delta (Main Basic/Classic/Extra, Comfort+, First), American (Basic Economy, Main Cabin,
+  Main Cabin Extra, Business), United (Basic Economy, United Economy, Economy Plus, Business). A trip is now
+  route + dates + airline + cabin; existing trips stay Delta with their history intact.
+- Prices still come straight from each airline's own site: American's results page carries its fare table, United's
+  results page is linked to directly and streams its fares. Each search gets its own tab and they are paced apart.
+- Airline badges (our own initials mark in each airline's colours) on the trip heading, My trips cards and Archived.
+
 ## 1.1.2 (2026-09-15)
 
 - Fix: Delete on a My trips card did nothing. The card's "don't open the trip" click handler ran first and
