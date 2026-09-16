@@ -167,6 +167,7 @@ CHROME_PATHS = [
     os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
 ]
 CDP_PORT = 9333
+SEARCH_GAP = 12        # seconds between searches; airlines return nothing if you rush them
 CABIN_TO_BRAND = {"main_basic": "BMAIN", "main_classic": "CMAIN", "main_extra": "EMAIN",
                   "comfort": "CDCP", "comfort_classic": "CDCP", "first": "CFIRST"}
 BRAND_NAMES = {"BMAIN": "Main Basic", "CMAIN": "Main Classic", "EMAIN": "Main Extra",
@@ -227,6 +228,143 @@ def parse_offers(data, trip):
         where = "these flights" if pinned else "this route"
         return None, "cabin_unavailable", f"{BRAND_NAMES.get(brand, brand)} isn't available on {where} for these dates."
     return best, "ok", None
+
+AIRLINE_NAMES = {"DL": "Delta", "AA": "American", "UA": "United"}
+# Each airline's own product names for the cabins we offer
+AA_CABIN = {"basic": "BASIC_ECONOMY", "main": "COACH", "main_extra": "COACH_PLUS", "business": "BUSINESS"}
+AA_CABIN_NAMES = {"basic": "Basic Economy", "main": "Main Cabin", "main_extra": "Main Cabin Extra", "business": "Business"}
+UA_CABIN = {"basic": {"ECO-BASIC"}, "main": {"ECONOMY"}, "economy_plus": {"ECONOMY-MERCH-EPLUS"},
+            "business": {"MIN-BUSINESS-OR-FIRST", "BUSINESS", "FIRST", "PREMIUM-PLUS"}}
+UA_CABIN_NAMES = {"basic": "Basic Economy", "main": "United Economy", "economy_plus": "Economy Plus", "business": "Business"}
+
+def best_offer(candidates, fastest):
+    """candidates: (minutes, price, extras). Fastest = shortest trip, ties to the cheaper fare; else cheapest."""
+    return min(candidates, key=(lambda c: (c[0], c[1])) if fastest else (lambda c: (c[1], c[0])))
+
+async def search_american(page, trip):
+    """American publishes the whole fare table inside its results page."""
+    cabin = trip.get("cabin_class", "main")
+    product = AA_CABIN.get(cabin)
+    cabin_name = AA_CABIN_NAMES.get(cabin, cabin)
+    if not product:
+        return None, "cabin_unavailable", f"American doesn't sell {cabin_name}."
+    pinned = flight_designators(trip.get("outbound_flights", ""))
+    us = lambda d: f"{d[5:7]}/{d[8:10]}/{d[0:4]}"
+    await page.goto("https://www.aa.com/", timeout=90000, wait_until="domcontentloaded")
+    await page.wait_for_timeout(3500)
+    for sel, val in ((r"#reservationFlightSearchForm\.originAirport", trip["origin"]),
+                     (r"#reservationFlightSearchForm\.destinationAirport", trip["destination"])):
+        await page.fill(sel, "")
+        await page.fill(sel, val)
+        await page.wait_for_timeout(700)
+    await page.fill("#aa-leavingOn", us(trip["travel_date"]))
+    await page.fill("#aa-returningFrom", us(trip["return_date"]))
+    await page.keyboard.press("Escape")
+    await page.click(r"#flightSearchForm\.button\.reSubmit")
+    for _ in range(40):
+        await page.wait_for_timeout(2000)
+        if "choose-flights" in page.url and re.search(r"\$\s?\d", await page.inner_text("body")):
+            break
+    html = await page.content()
+    m = re.search(r'<script id="ng-state" type="application/json">(.*?)</script>', html, re.S)
+    if not m:
+        return None, "error", f"American returned no fares (page: {await page.title()})"
+    result = json.loads(m.group(1)).get("SearchData", {}).get("itineraryResult") or {}
+    slices = result.get("slices") or []
+    if not slices:
+        return None, "no_flights", "American has no flights on this route for these dates."
+    matched, candidates = False, []
+    for sl in slices:
+        flights = [f"{seg['flight']['carrierCode']}{int(seg['flight']['flightNumber'])}"
+                   for seg in sl.get("segments", []) if seg.get("flight")]
+        if pinned and flights != pinned:
+            continue
+        matched = True
+        for pd in sl.get("pricingDetail", []):
+            # allPassengerDisplayTotal is the round-trip total with taxes; slicePricing is one leg only
+            amt = (pd.get("allPassengerDisplayTotal") or {}).get("amount")
+            if pd.get("productType") != product or not pd.get("productAvailable") or not amt:
+                continue
+            candidates.append((sl.get("durationInMinutes") or 0, float(amt), sl, flights))
+    if pinned and not matched:
+        return None, "flights_not_found", f"American didn't offer {' / '.join(pinned)} on these dates."
+    if not candidates:
+        where = "these flights" if pinned else "this route"
+        return None, "cabin_unavailable", f"{cabin_name} isn't available on {where} for these dates."
+    _, price, sl, flights = best_offer(candidates, not pinned and trip.get("preference") == "fastest")
+    return {"price": price, "airline": "American", "fare_class": cabin_name,
+            "stops": str(sl.get("stops", "")), "depart_time": (sl.get("departureDateTime") or "")[11:16],
+            "arrive_time": (sl.get("arrivalDateTime") or "")[11:16], "flights": " / ".join(flights)}, "ok", None
+
+async def search_united(page, trip):
+    """United's results page can be linked to directly; fares arrive as a stream of JSON chunks."""
+    cabin = trip.get("cabin_class", "main")
+    wanted = UA_CABIN.get(cabin)
+    cabin_name = UA_CABIN_NAMES.get(cabin, cabin)
+    if not wanted:
+        return None, "cabin_unavailable", f"United doesn't sell {cabin_name}."
+    pinned = flight_designators(trip.get("outbound_flights", ""))
+    stream = {}
+    # United's results page holds on to search state, so a second search in the same tab comes back empty:
+    # give every search its own tab
+    tab = await page.context.new_page()
+    async def on_response(resp):
+        if "FetchSSE" in resp.url or "FetchFlights" in resp.url:
+            try:
+                stream["body"] = await resp.text()
+            except Exception:
+                pass
+    tab.on("response", on_response)
+    try:
+        url = (f"https://www.united.com/en/us/fsr/choose-flights?f={trip['origin']}&t={trip['destination']}"
+               f"&d={trip['travel_date']}&r={trip['return_date']}"
+               "&sc=7%2C7&px=1&taxng=1&newHP=True&clm=7&st=bestmatches&tqp=R")
+        await tab.goto(url, timeout=90000, wait_until="domcontentloaded")
+        for _ in range(40):
+            await tab.wait_for_timeout(2000)
+            if stream.get("body") and re.search(r"\$\s?[\d,]{3,}", await tab.inner_text("body")):
+                break
+        if not stream.get("body"):
+            body = await tab.inner_text("body")
+            if re.search(r"can't process|restart your search|no flights", body, re.I):
+                return None, "no_flights", "United has no flights on this route for these dates."
+            return None, "error", f"United returned no fares (page: {await tab.title()})"
+    finally:
+        tab.remove_listener("response", on_response)
+        await tab.close()
+    matched, candidates = False, []
+    for chunk in re.findall(r"^data:\s*(.+)$", stream["body"], re.M):
+        try:
+            flight = (json.loads(chunk) or {}).get("flight")
+        except Exception:
+            continue
+        if not flight:
+            continue
+        legs = [flight] + list(flight.get("connections") or [])
+        flights = [f"{leg.get('marketingCarrier', 'UA')}{int(leg.get('flightNumber'))}" for leg in legs
+                   if leg.get("flightNumber")]
+        if pinned and flights != pinned:
+            continue
+        matched = True
+        for prod in flight.get("products", []):
+            if prod.get("productType") not in wanted:
+                continue
+            price = next((pr.get("amount") for pr in prod.get("prices", [])
+                          if pr.get("pricingType") == "Fare" and pr.get("amount")), None)
+            if price:
+                candidates.append((flight.get("travelMinutesTotal") or 0, float(price), flight, legs, flights))
+    if not matched and not candidates and not pinned:
+        return None, "no_flights", "United has no flights on this route for these dates."
+    if pinned and not matched:
+        return None, "flights_not_found", f"United didn't offer {' / '.join(pinned)} on these dates."
+    if not candidates:
+        where = "these flights" if pinned else "this route"
+        return None, "cabin_unavailable", f"{cabin_name} isn't available on {where} for these dates."
+    _, price, flight, legs, flights = best_offer(candidates, not pinned and trip.get("preference") == "fastest")
+    return {"price": price, "airline": "United", "fare_class": cabin_name,
+            "stops": str(len(legs) - 1), "depart_time": (flight.get("departDateTime") or "")[11:16],
+            "arrive_time": (legs[-1].get("destinationDateTime") or "")[11:16],
+            "flights": " / ".join(flights)}, "ok", None
 
 class AirportNotServed(Exception):
     pass
@@ -306,13 +444,7 @@ async def search_trip(page, trip):
             print(f"  No fares returned (page: {title!r})")
             await page.screenshot(path=str(BASE_DIR / f"debug_{trip['id']}.png"))
             return None, "error", f"Delta returned no results (page: {title})"
-        result, status, detail = parse_offers(offers[0], trip)
-        if result:
-            print(f"  → ${result['price']:,.0f} {result['fare_class']}  {result['flights']}  "
-                  f"{result['depart_time']}→{result['arrive_time']}")
-        else:
-            print(f"  {status}: {detail}")
-        return result, status, detail
+        return parse_offers(offers[0], trip)   # guarded_search prints the outcome
     except AirportNotServed as e:
         print(f"  Delta's search doesn't offer airport {e}")
         return None, "airport_not_served", f"Delta doesn't fly to or from {e}."
@@ -322,6 +454,27 @@ async def search_trip(page, trip):
         return None, "error", str(e).splitlines()[0][:200]
     finally:
         page.remove_listener("response", on_response)
+
+async def guarded_search(search, page, trip):
+    """Run one airline's search, turning anything unexpected into an error result with a screenshot."""
+    try:
+        result, status, detail = await search(page, trip)
+    except AirportNotServed as e:
+        print(f"  The airline's search doesn't offer airport {e}")
+        return None, "airport_not_served", f"This airline doesn't fly to or from {e}."
+    except Exception as e:
+        print(f"  Scrape error: {str(e).splitlines()[0]}")
+        try:
+            await page.screenshot(path=str(BASE_DIR / f"debug_{trip['id']}.png"))
+        except Exception:
+            pass
+        return None, "error", str(e).splitlines()[0][:200]
+    if result:
+        print(f"  → ${result['price']:,.0f} {result['fare_class']}  {result['flights']}  "
+              f"{result['depart_time']}→{result['arrive_time']}")
+    else:
+        print(f"  {status}: {detail}")
+    return result, status, detail
 
 async def scrape_trips(cfg, trips):
     """Search every trip in one Chrome session; returns {trip_id: (result, status, detail)}."""
@@ -345,13 +498,19 @@ async def scrape_trips(cfg, trips):
             ctx  = browser.contexts[0]
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
             for trip in trips:
-                print(f"\n── {trip.get('label', trip['id'])} ──")
+                airline = trip.get("airline", "DL")
+                print(f"\n── {trip.get('label', trip['id'])} ({AIRLINE_NAMES.get(airline, airline)}) ──")
+                search = {"AA": search_american, "UA": search_united}.get(airline, search_trip)
                 for attempt in range(2):
-                    results[trip["id"]] = await search_trip(page, trip)
+                    results[trip["id"]] = await guarded_search(search, page, trip)
                     if results[trip["id"]][1] != "error":
                         break
                     if attempt == 0:
                         print("  Retrying...")
+                        await asyncio.sleep(SEARCH_GAP)
+                # Searches fired back to back come back empty (United throttles them), so pace them out
+                if trip is not trips[-1]:
+                    await asyncio.sleep(SEARCH_GAP)
             # Shut Chrome down via DevTools; killing only its main process can leave
             # helpers holding the profile lock, which breaks the next run
             cdp = await browser.new_browser_cdp_session()
@@ -671,6 +830,7 @@ def user_route_trips(conn):
     return [
         {"id": r["route_id"], "label": r["label"], "origin": r["origin"], "destination": r["destination"],
          "travel_date": r["travel_date"].isoformat(), "return_date": r["return_date"].isoformat(),
+         "airline": r.get("airline") or "DL",
          "outbound_flights": r["outbound_flights"], "cabin_class": r["cabin_class"],
          "preference": r["preference"]}
         for r in conn.execute("SELECT DISTINCT ON (route_id) * FROM user_trips "

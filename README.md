@@ -1,9 +1,9 @@
 # FlightFare
 
-Tracks Delta Air Lines fares for trips people choose and emails them when prices change.
+Tracks Delta Air Lines, American Airlines and United Airlines fares for trips people choose and emails them when prices change.
 Live at **https://flightfare.io** · test copy at **https://flightfare.io/dev/**
 
-FlightFare is an independent service and is not affiliated with Delta Air Lines.
+FlightFare is an independent service and is not affiliated with Delta Air Lines, American Airlines or United Airlines.
 
 ## How it fits together
 
@@ -12,7 +12,7 @@ FlightFare is an independent service and is not affiliated with Delta Air Lines.
 | Website | GitHub Pages (`gh-pages` branch), served at flightfare.io | `site/` |
 | API (sign-in, trips, admin) | AWS EC2 `3.20.7.57`, behind Caddy at api.flightfare.io | `api/` |
 | Database | PostgreSQL on the same EC2 server (`flighttracker`; test copy `flighttracker_dev`) | `deploy/schema.sql` |
-| Price checker | Windows PC on a home connection (Delta blocks cloud IPs) | `tracker/` |
+| Price checker | Windows PC on a home connection (the airlines block cloud IPs) | `tracker/` |
 | Email | Resend, sending as alerts@flightfare.io | — |
 | Watchdog | AWS server, systemd timer every 5 min; emails when the price checker needs attention | `deploy/watchdog.py` |
 

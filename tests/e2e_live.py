@@ -63,6 +63,10 @@ async def main():
         check("GRR" in await pg.locator(".combo[data-for=origin] input[role=combobox]").input_value(), "From pre-filled with home airport")
         await pick(pg, ".combo[data-for=destination]", "minneap", "MSP")
         await choose_dates(pg, "2026-12-10", "2026-12-14")
+        await pg.locator(".apick:has(.alogo.AA)").click()          # pick American; its cabins replace Delta's
+        cabins = await pg.locator("#cabin-select option").all_inner_texts()
+        check(cabins == ["Basic Economy", "Main Cabin", "Main Cabin Extra", "Business"], f"American cabins: {cabins}")
+        await pg.locator(".apick:has(.alogo.DL)").click()          # back to Delta for the rest of the run
         await pg.locator("#trip-form [name=preference]").select_option("fastest")
         await pg.locator("#trip-form [name=label]").fill("Live check")
         await pg.click("#trip-submit")

@@ -193,6 +193,7 @@ CREATE TABLE public.user_trips (
     destination text NOT NULL,
     travel_date date NOT NULL,
     return_date date,
+    airline text DEFAULT 'DL'::text NOT NULL,
     outbound_flights text DEFAULT ''::text NOT NULL,
     cabin_class text DEFAULT 'main_classic'::text NOT NULL,
     alert_below integer,

@@ -448,7 +448,7 @@ def admin_user_detail(user_id: int, user=Depends(admin_user), conn=Depends(db)):
     if not u:
         raise HTTPException(404, "User not found.")
     trips = conn.execute(
-        "SELECT t.id, t.label, t.origin, t.destination, t.travel_date, t.return_date, t.outbound_flights, t.cabin_class, "
+        "SELECT t.id, t.label, t.origin, t.destination, t.travel_date, t.return_date, t.airline, t.outbound_flights, t.cabin_class, "
         "t.preference, t.alert_below, t.created_at, s.status, s.checked_at, "
         "(SELECT COUNT(*) FROM price_history p WHERE p.trip_id = t.route_id AND p.price_usd IS NOT NULL AND NOT p.synthetic) AS checks, "
         "(SELECT price_usd FROM price_history p WHERE p.trip_id = t.route_id AND p.price_usd IS NOT NULL ORDER BY scraped_at DESC LIMIT 1) AS latest, "
@@ -539,13 +539,24 @@ def analysis(scope: str = "all", user=Depends(research_user), conn=Depends(db)):
 
 # ── Trips ─────────────────────────────────────────────────────────────────────
 FLIGHT_RE  = re.compile(r"([A-Z0-9]{2})\s*(\d{1,4})")
-CABINS     = {"main_basic", "main_classic", "main_extra", "comfort", "first"}
+# Each airline sells its own cabins, so the choice of airline decides which cabins are on offer
+AIRLINES   = {"DL": "Delta Air Lines", "AA": "American Airlines", "UA": "United Airlines"}
+CABINS     = {
+    "DL": {"main_basic": "Main Basic", "main_classic": "Main Classic", "main_extra": "Main Extra",
+           "comfort": "Comfort+", "first": "First"},
+    "AA": {"basic": "Basic Economy", "main": "Main Cabin", "main_extra": "Main Cabin Extra",
+           "business": "Business"},
+    "UA": {"basic": "Basic Economy", "main": "United Economy", "economy_plus": "Economy Plus",
+           "business": "Business"},
+}
+DEFAULT_CABIN = {"DL": "main_classic", "AA": "main", "UA": "main"}
 
 class TripIn(BaseModel):
     origin: str
     destination: str
     travel_date: date
     return_date: date
+    airline: str = "DL"
     outbound_flights: str = Field(default="", max_length=60)
     cabin_class: str = "main_classic"
     preference: str = "cheapest"
@@ -622,11 +633,14 @@ def add_trip(body: TripIn, user=Depends(current_user), conn=Depends(db)):
         raise HTTPException(400, "The departure date must be in the future.")
     if body.return_date <= body.travel_date:
         raise HTTPException(400, "The return date must be after the departure date.")
+    airline = body.airline.strip().upper() or "DL"
+    if airline not in AIRLINES:
+        raise HTTPException(400, "Choose Delta, American or United.")
     if body.travel_date > date.today() + timedelta(days=330):
-        raise HTTPException(400, "Delta only sells flights about 11 months ahead.")
+        raise HTTPException(400, "Airlines only sell flights about 11 months ahead.")
     flights = normalize_flights(body.outbound_flights)
-    if body.cabin_class not in CABINS:
-        raise HTTPException(400, "Unknown cabin.")
+    if body.cabin_class not in CABINS[airline]:
+        raise HTTPException(400, f"{AIRLINES[airline]} doesn't sell that cabin.")
     if body.preference not in ("cheapest", "fastest"):
         raise HTTPException(400, "Choose cheapest or fastest.")
     preference = "cheapest" if flights else body.preference   # pinned flights make the choice moot
@@ -637,22 +651,25 @@ def add_trip(body: TripIn, user=Depends(current_user), conn=Depends(db)):
     # Identical searches share one route, so everyone tracking it shares its history
     same = conn.execute(
         "SELECT route_id FROM user_trips WHERE origin=%s AND destination=%s AND travel_date=%s "
-        "AND return_date=%s AND outbound_flights=%s AND cabin_class=%s AND preference=%s LIMIT 1",
-        (origin, dest, body.travel_date, body.return_date, flights, body.cabin_class, preference)).fetchone()
+        "AND return_date=%s AND airline=%s AND outbound_flights=%s AND cabin_class=%s AND preference=%s LIMIT 1",
+        (origin, dest, body.travel_date, body.return_date, airline, flights, body.cabin_class,
+         preference)).fetchone()
     if same:
         route_id = same["route_id"]
     else:
         key = f"{flights}|{body.cabin_class}" + ("|fastest" if preference == "fastest" else "")
         suffix = hashlib.sha1(key.encode()).hexdigest()[:6]
-        route_id = f"{origin}-{dest}-{body.travel_date}-{body.return_date}-{suffix}".lower()
+        # Delta routes keep their original ids so their price history carries over
+        prefix = "" if airline == "DL" else airline.lower() + "-"
+        route_id = f"{prefix}{origin}-{dest}-{body.travel_date}-{body.return_date}-{suffix}".lower()
     label = body.label.strip() or f"{dest} {body.travel_date:%b} {body.travel_date.day}"
     try:
         t = conn.execute(
             "INSERT INTO user_trips (user_id, route_id, label, origin, destination, travel_date, "
-            "return_date, outbound_flights, cabin_class, preference, alert_below) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+            "return_date, airline, outbound_flights, cabin_class, preference, alert_below) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
             (user["id"], route_id, label, origin, dest, body.travel_date, body.return_date,
-             flights, body.cabin_class, preference, body.alert_below)).fetchone()
+             airline, flights, body.cabin_class, preference, body.alert_below)).fetchone()
     except psycopg.errors.UniqueViolation:
         raise HTTPException(409, "You're already tracking this trip.")
     # The scraper worker on the home PC picks this up and prices the trip within a minute or two
@@ -706,6 +723,13 @@ def delete_trip(trip_id: int, user=Depends(current_user), conn=Depends(db)):
                         (trip_id, user["id"])).fetchone():
         raise HTTPException(404, "Trip not found.")
     return {"ok": True}
+
+@app.get("/airlines")
+def airlines():
+    """What the trip form offers: each airline and the cabins it sells."""
+    return {"airlines": [{"code": c, "name": n, "default_cabin": DEFAULT_CABIN[c],
+                          "cabins": [{"value": k, "label": v} for k, v in CABINS[c].items()]}
+                         for c, n in AIRLINES.items()]}
 
 @app.get("/health")
 def health(conn=Depends(db)):
