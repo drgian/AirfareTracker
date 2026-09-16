@@ -643,7 +643,8 @@ async function saveHome(code){
   ME.home_airport = r.home_airport;
 }
 async function loadApp(){
-  const [me, list] = await Promise.all([api('/me'), api('/trips')]);
+  // Airline names and logos are needed by the first paint, not just by the trip form
+  const [me, list] = await Promise.all([api('/me'), api('/trips'), loadAirlineList().then(findLogos)]);
   ME = me;
 
   $('acct-email').textContent = me.email;
@@ -1261,7 +1262,7 @@ async function openTrip(t = null){
   form.reset(); $('trip-err').textContent = '';
   $('trip-title').textContent = t ? 'Edit trip' : 'Track a trip';
   $('trip-submit').textContent = t ? 'Save changes' : 'Track trip';
-  await Promise.all([loadAirports(), loadAirlineList().then(findLogos)]);
+  await Promise.all([loadAirports(), loadAirlineList().then(findLogos)]);   // cheap after the first call
   setAirline(t?.airline || 'DL', t?.cabin_class);
   combos.origin.set(t?.origin || (t ? '' : ME?.home_airport || '')); combos.destination.set(t?.destination || '');
   if (t) {
