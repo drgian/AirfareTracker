@@ -183,8 +183,10 @@ body.dev{padding-top:22px}
   font:700 10.5px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.04em;color:#fff;flex:none}
 .alogo.DL{background:#003366}.alogo.AA{background:#0d5eaf}.alogo.UA{background:#1c2b5e}
 .alogo.sm{width:20px;height:20px;border-radius:5px;font-size:9px}
-.alogo-img{height:22px;width:auto;max-width:96px;object-fit:contain;flex:none;display:block}
-.alogo-img.sm{height:16px;max-width:70px}
+/* a white tile keeps every logo legible in dark mode, whatever background the logo itself has */
+.alogo-img{height:20px;width:auto;max-width:96px;object-fit:contain;flex:none;display:block;
+  background:#fff;padding:2px;border-radius:5px;box-sizing:content-box}
+.alogo-img.sm{height:15px;max-width:70px;padding:1.5px;border-radius:4px}
 .apicks{display:flex;gap:8px;flex-wrap:wrap}
 .apick{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;
   background:var(--card);color:inherit;font:inherit;font-weight:600;cursor:pointer}
