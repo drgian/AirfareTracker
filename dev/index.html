@@ -725,7 +725,9 @@ function overview(list){
         if (!confirm(`Archive ${t.label}? We'll stop checking its price, but keep it and its history under Archived.`)) return;
         try { replaceTrip(await api(`/trips/${t.id}/archive`, { method: 'POST' })); render(); } catch (err) { alert(err.message); }
       } }, 'Archive');
-    const del = deleteButton(t); del.addEventListener('click', stop, true);
+    // Must stay in the bubble phase and be added after the button's own handler: a capture-phase
+    // stopPropagation() here runs first and cancels the delete handler on the button itself.
+    const del = deleteButton(t); del.addEventListener('click', stop);
     return el('div', { class: 'card ov-card', role: 'button', tabindex: '0', onclick: () => select(t.id),
         onkeydown: e => { if (e.key === 'Enter') select(t.id); } },
       el('div', { class: 'top' },
