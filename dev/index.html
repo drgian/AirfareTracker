@@ -183,6 +183,8 @@ body.dev{padding-top:22px}
   font:700 10.5px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.04em;color:#fff;flex:none}
 .alogo.DL{background:#003366}.alogo.AA{background:#0d5eaf}.alogo.UA{background:#1c2b5e}
 .alogo.sm{width:20px;height:20px;border-radius:5px;font-size:9px}
+.alogo-img{height:22px;width:auto;max-width:96px;object-fit:contain;flex:none;display:block}
+.alogo-img.sm{height:16px;max-width:70px}
 .apicks{display:flex;gap:8px;flex-wrap:wrap}
 .apick{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;
   background:var(--card);color:inherit;font:inherit;font-weight:600;cursor:pointer}
@@ -791,9 +793,30 @@ let AIRLINES = [
 ];
 const airlineInfo = code => AIRLINES.find(a => a.code === code) || AIRLINES[0];
 const cabinName = (airline, cabin) => airlineInfo(airline).cabins.find(c => c.value === cabin)?.label || cabin;
-// Our own initials badge in each airline's colours: we don't copy the airlines' logos
-const logo = (code, small) => el('span', { class: 'alogo ' + code + (small ? ' sm' : ''), title: airlineInfo(code).name,
-  'aria-label': airlineInfo(code).name }, code);
+// The airline's own logo when one has been added under /logos/; otherwise our initials badge
+const LOGO_FILES = {};   // code -> filename, filled in by findLogos()
+function logo(code, small){
+  const badge = el('span', { class: 'alogo ' + code + (small ? ' sm' : ''), title: airlineInfo(code).name,
+    'aria-label': airlineInfo(code).name }, code);
+  const file = LOGO_FILES[code];
+  if (!file) return badge;
+  const img = el('img', { class: 'alogo-img' + (small ? ' sm' : ''), src: file, alt: airlineInfo(code).name });
+  img.addEventListener('error', () => img.replaceWith(badge), { once: true });   // missing file: fall back
+  return img;
+}
+// Check once per visit which logo files exist, so a missing one never shows a broken image
+async function findLogos(){
+  await Promise.all(AIRLINES.flatMap(a => ['svg', 'png'].map(ext => {
+    const url = `/logos/${a.code.toLowerCase()}.${ext}`;
+    return new Promise(done => {
+      if (LOGO_FILES[a.code]) return done();
+      const probe = new Image();
+      probe.onload = () => { LOGO_FILES[a.code] = LOGO_FILES[a.code] || url; done(); };
+      probe.onerror = () => done();
+      probe.src = url;
+    });
+  })));
+}
 const CABIN = { main_basic: 'Main Basic', main_classic: 'Main Classic', main_extra: 'Main Extra', comfort: 'Comfort+', first: 'First' };
 const PROBLEMS = {
   flights_not_found: "Those flights aren't available",
@@ -1236,7 +1259,7 @@ async function openTrip(t = null){
   form.reset(); $('trip-err').textContent = '';
   $('trip-title').textContent = t ? 'Edit trip' : 'Track a trip';
   $('trip-submit').textContent = t ? 'Save changes' : 'Track trip';
-  await Promise.all([loadAirports(), loadAirlineList()]);
+  await Promise.all([loadAirports(), loadAirlineList().then(findLogos)]);
   setAirline(t?.airline || 'DL', t?.cabin_class);
   combos.origin.set(t?.origin || (t ? '' : ME?.home_airport || '')); combos.destination.set(t?.destination || '');
   if (t) {
