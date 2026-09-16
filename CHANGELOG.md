@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2 (2026-09-15)
+
+- Fix: Delete on a My trips card did nothing. The card's "don't open the trip" click handler ran first and
+  cancelled the delete. Delete from a trip tab and from Archived were unaffected. Covered by the live test now.
+
 ## 1.1.1 (2026-09-15)
 
 - Smoother price charts: when two checks are under 6 hours apart, the chart plots only the later one, so the line

@@ -76,9 +76,11 @@ async def main():
         await pg.click("text=Restore tracking")
         await pg.wait_for_selector(".tab >> text=Live check")
         check(True, "archive, view history, and restore work live")
-        await pg.click(".settings >> text=Delete")
+        # Delete from the My trips card: a capture-phase stopPropagation here once swallowed the click (fixed 1.1.2)
+        await pg.click(".tab >> text=My trips")
+        await pg.locator(".ov-card").filter(has_text="Live check").locator("button:has-text('Delete')").click()
         await pg.wait_for_selector("text=No trips yet")
-        check(True, "delete works live")
+        check(True, "delete works live from the My trips card")
 
         await pg.click("#logout"); await pg.click("#signin-top")
         await pg.fill("#signin-email", EMAIL); await pg.fill("#signin-password", "livepass123")
