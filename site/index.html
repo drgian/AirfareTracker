@@ -227,7 +227,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
       <div class="hero">
         <span class="delta-only">Delta, American &amp; United fares</span>
         <h1>Know the moment your fare changes.</h1>
-        <p class="lede">FlightFare checks Delta twice a day for the trips you care about and emails you when the price moves.</p>
+        <p class="lede">FlightFare checks Delta, American and United twice a day for the trips you care about, and sends one daily summary when prices move.</p>
         <form class="signup" id="signup-form">
           <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
           <button class="btn primary" type="submit">Get started</button>
@@ -905,7 +905,8 @@ function settingsView(t){
     } }, 'Archive');
   return el('div', { class: 'card settings' }, form,
     el('div', { style: 'display:flex;gap:8px' }, archive, deleteButton(t)),
-    el('p', { class: 'note' }, "We also email you whenever this trip's price changes."));
+    el('p', { class: 'note' }, "Once a day we email you a summary of every trip whose price moved. "
+      + "Set a target above and we'll email you the moment this trip drops below it."));
 }
 function deleteButton(t){
   return el('button', { class: 'btn link danger', onclick: async () => {

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- One price summary email a day instead of one per change: every trip that moved is listed with where it started and
+  where it ended up. Target alerts stay immediate and now fire only when a price crosses below the target, rather
+  than on every check while it sits below.
+
 ## 1.2.0 (2026-09-15)
 
 - American Airlines and United Airlines fares alongside Delta. Pick the airline on a trip and the cabin list becomes

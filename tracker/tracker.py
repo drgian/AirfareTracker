@@ -3,6 +3,7 @@
 
 import asyncio, contextlib, json, re, shutil, smtplib, socket, subprocess, sys, os, time, traceback
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -62,7 +63,21 @@ CREATE TABLE IF NOT EXISTS check_requests (
     started_at   TIMESTAMP,
     finished_at  TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS check_requests_open ON check_requests (route_id) WHERE finished_at IS NULL;"""
+CREATE INDEX IF NOT EXISTS check_requests_open ON check_requests (route_id) WHERE finished_at IS NULL;
+-- Price changes wait here until the day's summary email goes out; threshold alerts still send immediately
+CREATE TABLE IF NOT EXISTS price_alerts (
+    id          SERIAL PRIMARY KEY,
+    email       TEXT NOT NULL,
+    route_id    TEXT NOT NULL,
+    label       TEXT,
+    route       TEXT NOT NULL,
+    prev_price  DOUBLE PRECISION,
+    new_price   DOUBLE PRECISION NOT NULL,
+    link        TEXT NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+    sent_at     TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS price_alerts_unsent ON price_alerts (email) WHERE sent_at IS NULL;"""
 
 def open_tunnel(cfg):
     """When the scraper runs off the AWS box, reach its Postgres through an SSH tunnel."""
@@ -133,28 +148,82 @@ def alert_recipients(cfg, conn, trip, legacy):
         out[r["email"]] = (r["alert_below"] if r["alert_below"] is not None else old, APP_URL)
     return out
 
-def fire_alerts(cfg, recipients, trip, new_price, prev_price):
-    # One email per person so followers of a route never see each other's addresses
+DIGEST_AFTER_HOUR = 12     # the day's summary goes out with the afternoon/evening check
+DIGEST_MAX_WAIT    = timedelta(hours=26)
+
+def fire_alerts(cfg, conn, recipients, trip, new_price, prev_price):
+    """Queue the change for the daily summary; email at once only when a target price is newly met."""
     origin, dest = trip["origin"], trip["destination"]
-    route = f"{origin} → {dest}  |  {trip['travel_date']} – {trip.get('return_date', '')}"
+    airline = AIRLINE_NAMES.get(trip.get("airline", "DL"), trip.get("airline", ""))
+    route = f"{airline} {origin} → {dest}  |  {trip['travel_date']} – {trip.get('return_date', '')}"
     for email, (threshold, link) in recipients.items():
         if prev_price and new_price != prev_price:
-            delta = new_price - prev_price
-            sign, arrow = ("+", "↑") if delta > 0 else ("", "↓")
-            send_email(cfg, [email],
-                       f"Flight Price {arrow} {origin}→{dest}: now ${new_price:,.0f} ({sign}${delta:,.0f})",
-                       "\n".join([f"Route: {route}", "",
-                                  f"Previous price: ${prev_price:,.0f}",
-                                  f"Current price:  ${new_price:,.0f}",
-                                  f"Change:         {sign}${delta:,.0f}", "",
-                                  f"Dashboard: {link}"]))
-        if threshold and new_price < threshold:
+            conn.execute("INSERT INTO price_alerts (email, route_id, label, route, prev_price, new_price, link) "
+                         "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                         (email, trip["id"], trip.get("label"), route, prev_price, new_price, link))
+        # Only when it crosses the line, so sitting below the target doesn't email every check
+        crossed = threshold and new_price < threshold and (prev_price is None or prev_price >= threshold)
+        if crossed:
             send_email(cfg, [email],
                        f"Price Alert: {origin}→{dest} now ${new_price:,.0f} (below ${threshold:,.0f})",
                        "\n".join([f"Route: {route}", "",
                                   f"Current price: ${new_price:,.0f}",
-                                  f"Alert threshold: ${threshold:,.0f}", "",
+                                  f"Alert threshold: ${threshold:,.0f}",
+                                  f"Previous price: ${prev_price:,.0f}" if prev_price else "", "",
                                   f"Dashboard: {link}"]))
+
+def send_digests(cfg, conn, force=False):
+    """One summary email per person per day, covering every price change since the last one."""
+    local_hour = datetime.now(EASTERN).hour
+    rows = conn.execute("SELECT * FROM price_alerts WHERE sent_at IS NULL ORDER BY email, id").fetchall()
+    if not rows:
+        return 0
+    oldest = min(r["created_at"] for r in rows)
+    if not force and local_hour < DIGEST_AFTER_HOUR and utcnow() - oldest < DIGEST_MAX_WAIT:
+        print(f"{len(rows)} price change(s) held for today's summary")
+        return 0
+    by_email = {}
+    for r in rows:
+        by_email.setdefault(r["email"], []).append(r)
+    sent = 0
+    for email, items in by_email.items():
+        # A trip that moved several times is one line: where it started, where it ended up
+        trips_moved = {}
+        for r in items:
+            t = trips_moved.setdefault(r["route_id"], {"first": r, "last": r, "moves": 0})
+            t["last"] = r
+            t["moves"] += 1
+        summaries = []
+        for t in trips_moved.values():
+            start, end = t["first"]["prev_price"], t["last"]["new_price"]
+            summaries.append((end - start, t, start, end))
+        summaries.sort(key=lambda x: x[0])
+        down = sum(1 for d, *_ in summaries if d < 0)
+        up = sum(1 for d, *_ in summaries if d > 0)
+        bits = [b for b in (f"{down} down" if down else "", f"{up} up" if up else "") if b]
+        n = len(summaries)
+        subject = f"FlightFare: {n} trip{'s' if n > 1 else ''} changed price ({', '.join(bits) or 'no net change'})"
+        lines = ["Here's what moved since your last summary:", ""]
+        for delta, t, start, end in summaries:
+            r = t["last"]
+            sign = "+" if delta > 0 else "-"
+            moved = f"   ({t['moves']} changes today)" if t["moves"] > 1 else ""
+            lines += [f"{r['label'] or r['route_id']}  ({r['route']})",
+                      f"   ${start:,.0f} → ${end:,.0f}   {sign}${abs(delta):,.0f}{moved}", ""]
+        lines += [f"Dashboard: {items[0]['link']}"]
+        claimed = [r["id"] for r in conn.execute(
+            "UPDATE price_alerts SET sent_at=%s WHERE id = ANY(%s) AND sent_at IS NULL RETURNING id",
+            (utcnow(), [r["id"] for r in items]))]
+        if not claimed:
+            continue                      # another run already sent these
+        try:
+            send_email(cfg, [email], subject, "\n".join(lines))
+        except Exception as e:
+            conn.execute("UPDATE price_alerts SET sent_at=NULL WHERE id = ANY(%s)", (claimed,))
+            print(f"  couldn't send the summary to {email}, will retry: {e}")
+            continue
+        sent += 1
+    return sent
 
 # ── Scraper ───────────────────────────────────────────────────────────────────
 # Delta's bot protection rejects browsers launched by automation tools, so we start an
@@ -166,6 +235,7 @@ CHROME_PATHS = [
     "/usr/bin/google-chrome",
     os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
 ]
+EASTERN  = ZoneInfo("America/New_York")
 CDP_PORT = 9333
 SEARCH_GAP = 12        # seconds between searches; airlines return nothing if you rush them
 CABIN_TO_BRAND = {"main_basic": "BMAIN", "main_classic": "CMAIN", "main_extra": "EMAIN",
@@ -858,7 +928,7 @@ def record_result(conn, cfg, trip, outcome, legacy, source="scheduled"):
         "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         (trip["id"], now, result["price"], result["airline"], result["stops"], result["depart_time"],
          result["arrive_time"], result["fare_class"], result["flights"], source))
-    fire_alerts(cfg, alert_recipients(cfg, conn, trip, legacy), trip,
+    fire_alerts(cfg, conn, alert_recipients(cfg, conn, trip, legacy), trip,
                 result["price"], prev["price_usd"] if prev else None)
     return True
 
@@ -901,6 +971,9 @@ async def run(cfg):
     if any_scraped:
         print("\n── Updating dashboard ──")
         push_to_github(cfg, generate_html(conn, trips))
+    sent = send_digests(cfg, conn)
+    if sent:
+        print(f"Sent {sent} price summary email(s)")
     conn.close()
 
 WORKER_PORT = 55433
@@ -914,6 +987,7 @@ async def worker(cfg):
                "database_url": cfg["database_url"].replace(f"port={old}", f"port={WORKER_PORT}")}
     print(f"[{utcnow():%Y-%m-%d %H:%M}Z] worker {VERSION} started", flush=True)
     tunnel = conn = None
+    last_digest = utcnow()
     while True:
         try:
             if tunnel is None or tunnel.poll() is not None:
@@ -937,6 +1011,10 @@ async def worker(cfg):
                 conn.execute("UPDATE check_requests SET finished_at=%s WHERE finished_at IS NULL "
                              "AND route_id = ANY(%s)", (utcnow(), list(wanted)))
                 sys.stdout.flush()
+            if utcnow() - last_digest > timedelta(minutes=10):
+                last_digest = utcnow()
+                if send_digests(cfg, conn):
+                    sys.stdout.flush()
         except Exception:
             traceback.print_exc()
             sys.stdout.flush()
