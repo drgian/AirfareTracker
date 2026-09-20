@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
-VERSION       = "1.5.0"
+VERSION       = "1.6.0"
 DATABASE_URL  = os.environ.get("DATABASE_URL", "dbname=flighttracker")
 APP_URL       = os.environ.get("APP_URL", "https://flightfare.io/")
 API_URL       = os.environ.get("API_URL", "https://api.flightfare.io")   # where Apple posts back to
@@ -529,7 +529,7 @@ def admin_user_detail(user_id: int, user=Depends(admin_user), conn=Depends(db)):
     if not u:
         raise HTTPException(404, "User not found.")
     trips = conn.execute(
-        "SELECT t.id, t.label, t.origin, t.destination, t.travel_date, t.return_date, t.airline, t.outbound_flights, t.cabin_class, "
+        "SELECT t.id, t.label, t.origin, t.destination, t.travel_date, t.return_date, t.airline, t.outbound_flights, t.cabin_class, t.archived_at, "
         "t.preference, t.alert_below, t.created_at, s.status, s.checked_at, "
         "(SELECT COUNT(*) FROM price_history p WHERE p.trip_id = t.route_id AND p.price_usd IS NOT NULL AND NOT p.synthetic) AS checks, "
         "(SELECT price_usd FROM price_history p WHERE p.trip_id = t.route_id AND p.price_usd IS NOT NULL ORDER BY scraped_at DESC LIMIT 1) AS latest, "

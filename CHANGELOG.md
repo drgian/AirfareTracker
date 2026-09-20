@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0 (2026-09-20)
+
+- Admin: click a user's email to unfold the flights they're tracking underneath — airline, route, dates, cabin,
+  latest and lowest price, checks and status. The arrow beside it still opens the full account page.
+
 ## 1.5.0 (2026-09-20)
 
 - Southwest Airlines, alongside Delta, American and United. Its cabins are Basic, Choice, Choice Preferred and
