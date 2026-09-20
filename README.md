@@ -1,6 +1,6 @@
 # FlightFare
 
-Tracks Delta Air Lines, American Airlines and United Airlines fares for trips people choose and emails them when prices change.
+Tracks Delta Air Lines, American Airlines, United Airlines and Southwest Airlines fares for trips people choose and emails them when prices change.
 Live at **https://flightfare.io** · test copy at **https://flightfare.io/dev/**
 
 FlightFare is an independent service and is not affiliated with Delta Air Lines, American Airlines or United Airlines.

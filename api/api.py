@@ -12,17 +12,20 @@ from collections import defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from urllib.parse import urlencode
 
 import jwt
+from fastapi.responses import RedirectResponse
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
-VERSION       = "1.3.0"
+VERSION       = "1.5.0"
 DATABASE_URL  = os.environ.get("DATABASE_URL", "dbname=flighttracker")
 APP_URL       = os.environ.get("APP_URL", "https://flightfare.io/")
+API_URL       = os.environ.get("API_URL", "https://api.flightfare.io")   # where Apple posts back to
 SMTP_HOST     = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT     = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER     = os.environ["SMTP_USER"]
@@ -31,6 +34,11 @@ MAIL_FROM     = os.environ.get("MAIL_FROM", SMTP_USER)
 LOGIN_TTL     = timedelta(minutes=30)
 SESSION_TTL   = timedelta(days=60)
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+# Sign in with Apple: the Services ID is the web client. Apple posts the identity token straight back,
+# so no private key is needed for web sign-in.
+APPLE_SERVICES_ID = os.environ.get("APPLE_SERVICES_ID", "")
+APPLE_JWKS    = jwt.PyJWKClient("https://appleid.apple.com/auth/keys", cache_keys=True, lifespan=3600)
+APPLE_AUTH_URL = "https://appleid.apple.com/auth/authorize"
 GOOGLE_JWKS   = jwt.PyJWKClient("https://www.googleapis.com/oauth2/v3/certs", cache_keys=True, lifespan=3600)
 # Set on the dev copy only: restricts every sign-in and request to these accounts
 PRIVATE_TO    = {e.strip().lower() for e in os.environ.get("PRIVATE_TO", "").split(",") if e.strip()}
@@ -164,6 +172,13 @@ def allowed(email: str):
     if PRIVATE_TO and email.lower() not in PRIVATE_TO:
         raise HTTPException(403, PRIVATE_MSG)
 
+DISABLED_MSG = "This account has been disabled. Contact the site owner if that's a mistake."
+
+def refuse_if_disabled(conn, email: str):
+    row = conn.execute("SELECT disabled_at FROM users WHERE email=%s", (email,)).fetchone()
+    if row and row["disabled_at"]:
+        raise HTTPException(403, DISABLED_MSG)
+
 def clean_email(raw: str) -> str:
     email = raw.strip().lower()
     if not EMAIL_RE.match(email):
@@ -178,6 +193,7 @@ def client_ip(request: Request) -> str:
 def signup(body: SignupIn, request: Request, conn=Depends(db)):
     email = clean_email(body.email)
     rate_limit("ip:" + client_ip(request), 20)
+    refuse_if_disabled(conn, email)
     user = conn.execute("SELECT id, password_hash FROM users WHERE email=%s", (email,)).fetchone()
     if user and user["password_hash"]:
         raise HTTPException(409, "There's already an account with that email. Sign in instead.")
@@ -193,6 +209,7 @@ def login(body: LoginIn, request: Request, conn=Depends(db)):
     email = clean_email(body.email)
     rate_limit("login-ip:" + client_ip(request), 30, 900)
     rate_limit("login-email:" + email, 10, 900)
+    refuse_if_disabled(conn, email)
     user = conn.execute("SELECT id, email, password_hash FROM users WHERE email=%s", (email,)).fetchone()
     if user and not user["password_hash"]:
         raise HTTPException(400, "This account doesn't have a password yet. Use \"Forgot password\" to set one.")
@@ -219,6 +236,7 @@ def google_login(body: GoogleIn, request: Request, conn=Depends(db)):
         raise HTTPException(401, "Your Google account's email address isn't verified.")
     email, sub = claims["email"].strip().lower(), claims["sub"]
     allowed(email)
+    refuse_if_disabled(conn, email)
     user = (conn.execute("SELECT id FROM users WHERE google_sub=%s", (sub,)).fetchone()
             or conn.execute("SELECT id FROM users WHERE email=%s", (email,)).fetchone())
     if user:
@@ -229,6 +247,66 @@ def google_login(body: GoogleIn, request: Request, conn=Depends(db)):
         user = conn.execute("INSERT INTO users (email, google_sub, email_verified_at) VALUES (%s,%s,%s) RETURNING id",
                             (email, sub, utcnow())).fetchone()
     return {"session": new_session(conn, user["id"]), "email": email}
+
+@app.get("/auth/apple/start")
+def apple_start(request: Request, conn=Depends(db)):
+    """Send the browser to Apple. Apple posts the result back to /auth/apple/callback."""
+    if not APPLE_SERVICES_ID:
+        raise HTTPException(503, "Apple sign-in isn't available yet.")
+    rate_limit("apple-ip:" + client_ip(request), 30, 900)
+    state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
+    conn.execute("INSERT INTO oauth_states (state_hash, nonce_hash, expires_at) VALUES (%s,%s,%s)",
+                 (digest(state), digest(nonce), utcnow() + timedelta(minutes=15)))
+    params = urlencode({
+        "client_id": APPLE_SERVICES_ID,
+        "redirect_uri": API_URL.rstrip("/") + "/auth/apple/callback",
+        "response_type": "code id_token",
+        "response_mode": "form_post",       # Apple insists on this when asking for name or email
+        "scope": "name email",
+        "state": state,
+        "nonce": nonce,
+    })
+    return RedirectResponse(f"{APPLE_AUTH_URL}?{params}", status_code=302)
+
+@app.post("/auth/apple/callback")
+async def apple_callback(request: Request, conn=Depends(db)):
+    """Apple posts here. Verify, sign the person in, and bounce back to the site with a one-time link."""
+    form = await request.form()
+    id_token, state = form.get("id_token", ""), form.get("state", "")
+    back = APP_URL.rstrip("/") + "/"
+    row = conn.execute("DELETE FROM oauth_states WHERE state_hash=%s AND expires_at > %s RETURNING nonce_hash",
+                       (digest(state), utcnow())).fetchone()
+    if not row or not id_token:
+        return RedirectResponse(back + "#appleerror=expired", status_code=303)
+    try:
+        key = APPLE_JWKS.get_signing_key_from_jwt(id_token)
+        claims = jwt.decode(id_token, key.key, algorithms=["ES256"], audience=APPLE_SERVICES_ID,
+                            issuer="https://appleid.apple.com")
+    except Exception:
+        return RedirectResponse(back + "#appleerror=token", status_code=303)
+    if digest(claims.get("nonce", "")) != row["nonce_hash"]:
+        return RedirectResponse(back + "#appleerror=nonce", status_code=303)
+    email, sub = (claims.get("email") or "").strip().lower(), claims.get("sub")
+    if not email or not sub:
+        return RedirectResponse(back + "#appleerror=noemail", status_code=303)
+    try:
+        allowed(email)
+    except HTTPException:
+        return RedirectResponse(back + "#appleerror=private", status_code=303)
+    user = (conn.execute("SELECT id FROM users WHERE apple_sub=%s", (sub,)).fetchone()
+            or conn.execute("SELECT id FROM users WHERE email=%s", (email,)).fetchone())
+    if user:
+        # Apple has verified this address, so it proves ownership of the matching account
+        conn.execute("UPDATE users SET apple_sub=COALESCE(apple_sub, %s), "
+                     "email_verified_at=COALESCE(email_verified_at, %s) WHERE id=%s", (sub, utcnow(), user["id"]))
+    else:
+        user = conn.execute("INSERT INTO users (email, apple_sub, email_verified_at) VALUES (%s,%s,%s) RETURNING id",
+                            (email, sub, utcnow())).fetchone()
+    # Hand the browser a one-time token; the page swaps it for a session exactly like an emailed link
+    token = secrets.token_urlsafe(32)
+    conn.execute("INSERT INTO login_tokens (token_hash, user_id, expires_at, purpose) VALUES (%s,%s,%s,'login')",
+                 (digest(token), user["id"], utcnow() + timedelta(minutes=5)))
+    return RedirectResponse(f"{back}#login={token}", status_code=303)
 
 @app.post("/auth/reset")
 def reset_password(body: ResetIn, conn=Depends(db)):
@@ -248,6 +326,7 @@ def request_login(body: EmailIn, request: Request, conn=Depends(db)):
     """Email a one-time link: mode 'signin' (sign-in link) or 'reset' (set a new password)."""
     email = clean_email(body.email)
     rate_limit("ip:" + client_ip(request), 20)
+    refuse_if_disabled(conn, email)
     found = conn.execute("SELECT id FROM users WHERE email=%s", (email,)).fetchone()
     if not found:
         raise HTTPException(404, "We don't have an account for that email. Check the spelling, or create an account.")
@@ -273,12 +352,14 @@ def current_user(authorization: str = Header(default=""), conn=Depends(db)):
     if not hmac.compare_digest(scheme.lower(), "bearer") or not token:
         raise HTTPException(401, "Please sign in.")
     user = conn.execute(
-        "SELECT u.id, u.email, u.role, u.home_airport, u.password_hash IS NOT NULL AS has_password, "
+        "SELECT u.id, u.email, u.role, u.home_airport, u.disabled_at, u.password_hash IS NOT NULL AS has_password, "
         "u.google_sub IS NOT NULL AS has_google "
         "FROM sessions s JOIN users u ON u.id = s.user_id "
         "WHERE s.token_hash=%s AND s.expires_at > %s", (digest(token), utcnow())).fetchone()
     if not user:
         raise HTTPException(401, "Your session has expired. Please sign in again.")
+    if user["disabled_at"]:
+        raise HTTPException(403, DISABLED_MSG)
     allowed(user["email"])
     user["token_hash"] = digest(token)
     user["is_admin"] = user["role"] == "admin"
@@ -433,7 +514,7 @@ def admin_activity(user=Depends(admin_user), conn=Depends(db)):
 def admin_users(user=Depends(admin_user), conn=Depends(db)):
     rows = conn.execute(
         "SELECT u.id, u.email, u.role, u.role = 'admin' AS is_admin, u.created_at, u.last_login_at, u.email_verified_at IS NOT NULL AS confirmed, "
-        "u.password_hash IS NOT NULL AS has_password, COUNT(t.id) AS trips "
+        "u.password_hash IS NOT NULL AS has_password, u.disabled_at IS NOT NULL AS disabled, COUNT(t.id) AS trips "
         "FROM users u LEFT JOIN user_trips t ON t.user_id = u.id GROUP BY u.id ORDER BY u.created_at").fetchall()
     for r in rows:
         for k in ("created_at", "last_login_at"):
@@ -443,7 +524,7 @@ def admin_users(user=Depends(admin_user), conn=Depends(db)):
 @app.get("/admin/users/{user_id}")
 def admin_user_detail(user_id: int, user=Depends(admin_user), conn=Depends(db)):
     u = conn.execute(
-        "SELECT id, email, role, role = 'admin' AS is_admin, created_at, last_login_at, email_verified_at, password_hash IS NOT NULL AS has_password "
+        "SELECT id, email, role, role = 'admin' AS is_admin, created_at, last_login_at, email_verified_at, password_hash IS NOT NULL AS has_password, disabled_at IS NOT NULL AS disabled "
         "FROM users WHERE id=%s", (user_id,)).fetchone()
     if not u:
         raise HTTPException(404, "User not found.")
@@ -462,6 +543,34 @@ def admin_user_detail(user_id: int, user=Depends(admin_user), conn=Depends(db)):
         return v.isoformat() if hasattr(v, "isoformat") else v
     return {**{k: iso(v) for k, v in u.items()}, "active_sessions": sessions,
             "trips": [{k: iso(v) for k, v in t.items()} for t in trips]}
+
+class DisableIn(BaseModel):
+    disabled: bool
+
+@app.post("/admin/users/{user_id}/disabled")
+def admin_set_disabled(user_id: int, body: DisableIn, user=Depends(admin_user), conn=Depends(db)):
+    """Disabled accounts can't sign in and their trips stop being priced. Nothing is thrown away."""
+    if user_id == user["id"]:
+        raise HTTPException(400, "You can't disable your own account.")
+    row = conn.execute("UPDATE users SET disabled_at=%s WHERE id=%s RETURNING email",
+                       (utcnow() if body.disabled else None, user_id)).fetchone()
+    if not row:
+        raise HTTPException(404, "User not found.")
+    if body.disabled:
+        conn.execute("DELETE FROM sessions WHERE user_id=%s", (user_id,))     # signed out everywhere
+        conn.execute("DELETE FROM login_tokens WHERE user_id=%s AND used_at IS NULL", (user_id,))
+    return {"email": row["email"], "disabled": body.disabled}
+
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: int, user=Depends(admin_user), conn=Depends(db)):
+    """Remove the account and its trips. Price history belongs to the route, so it stays."""
+    if user_id == user["id"]:
+        raise HTTPException(400, "You can't delete your own account.")
+    trips = conn.execute("SELECT COUNT(*) AS n FROM user_trips WHERE user_id=%s", (user_id,)).fetchone()["n"]
+    row = conn.execute("DELETE FROM users WHERE id=%s RETURNING email", (user_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "User not found.")
+    return {"email": row["email"], "trips_removed": trips}
 
 @app.get("/admin/feedback")
 def admin_feedback(user=Depends(admin_user), conn=Depends(db)):
@@ -540,7 +649,8 @@ def analysis(scope: str = "all", user=Depends(research_user), conn=Depends(db)):
 # ── Trips ─────────────────────────────────────────────────────────────────────
 FLIGHT_RE  = re.compile(r"([A-Z0-9]{2})\s*(\d{1,4})")
 # Each airline sells its own cabins, so the choice of airline decides which cabins are on offer
-AIRLINES   = {"DL": "Delta Air Lines", "AA": "American Airlines", "UA": "United Airlines"}
+AIRLINES   = {"DL": "Delta Air Lines", "AA": "American Airlines", "UA": "United Airlines",
+              "WN": "Southwest Airlines"}
 CABINS     = {
     "DL": {"main_basic": "Main Basic", "main_classic": "Main Classic", "main_extra": "Main Extra",
            "comfort": "Comfort+", "first": "First"},
@@ -548,8 +658,10 @@ CABINS     = {
            "business": "Business"},
     "UA": {"basic": "Basic Economy", "main": "United Economy", "economy_plus": "Economy Plus",
            "business": "Business"},
+    "WN": {"basic": "Basic", "choice": "Choice", "choice_preferred": "Choice Preferred",
+           "choice_extra": "Choice Extra"},
 }
-DEFAULT_CABIN = {"DL": "main_classic", "AA": "main", "UA": "main"}
+DEFAULT_CABIN = {"DL": "main_classic", "AA": "main", "UA": "main", "WN": "choice"}
 
 class TripIn(BaseModel):
     origin: str

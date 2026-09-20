@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.5.0 (2026-09-20)
+
+- Southwest Airlines, alongside Delta, American and United. Its cabins are Basic, Choice, Choice Preferred and
+  Choice Extra. Southwest prices each direction separately, so a tracked round trip is the chosen outbound plus
+  the cheapest return.
+- Real airline logos on the trip form, trip heading, My trips cards and Archived.
+
+## 1.4.0 (2026-09-20)
+
+- Admin can disable or remove an account. Disabling blocks every way in (emailed link, password, Google), signs them
+  out everywhere and stops their trips being priced or emailed, while keeping everything so it can be undone.
+  Removing deletes the account and its trips after you type the email to confirm; price history stays, because it
+  belongs to the route and other people may be tracking it. Neither can be done to your own account.
+- Groundwork for Sign in with Apple (inactive until the Services ID is configured).
+
 ## 1.3.0 (2026-09-19)
 
 - One price summary email a day instead of one per change: every trip that moved is listed with where it started and

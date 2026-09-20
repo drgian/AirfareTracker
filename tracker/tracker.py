@@ -13,7 +13,7 @@ import psycopg
 from psycopg.rows import dict_row
 from playwright.async_api import async_playwright
 
-VERSION = "1.3.0"
+VERSION = "1.5.0"
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -25,7 +25,9 @@ REPO_DIR  = BASE_DIR / "site-repo"
 DASHBOARD = "https://flightfare.io/flight_tracker.html"
 APP_URL   = "https://flightfare.io/"
 # Task Scheduler may not see PATH changes made by installers until a reboot
-GIT = shutil.which("git") or r"C:\Program Files\Git\cmd\git.exe"
+# The legacy static dashboard needs git; the website doesn't. No git, no dashboard - the checks still run.
+_WIN_GIT = r"C:\Program Files\Git\cmd\git.exe"
+GIT = shutil.which("git") or (_WIN_GIT if os.name == "nt" and os.path.exists(_WIN_GIT) else None)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 def load_cfg():
@@ -143,7 +145,7 @@ def alert_recipients(cfg, conn, trip, legacy):
         for e in ([emails] if isinstance(emails, str) else emails):
             out[e.lower()] = (cfg.get("alert_below") if own else None, DASHBOARD)
     for r in conn.execute("SELECT u.email, t.alert_below FROM user_trips t JOIN users u ON u.id = t.user_id "
-                          "WHERE t.route_id=%s AND t.archived_at IS NULL", (trip["id"],)):
+                          "WHERE t.route_id=%s AND t.archived_at IS NULL AND u.disabled_at IS NULL", (trip["id"],)):
         old = out.get(r["email"], (None, APP_URL))[0]
         out[r["email"]] = (r["alert_below"] if r["alert_below"] is not None else old, APP_URL)
     return out
@@ -299,13 +301,18 @@ def parse_offers(data, trip):
         return None, "cabin_unavailable", f"{BRAND_NAMES.get(brand, brand)} isn't available on {where} for these dates."
     return best, "ok", None
 
-AIRLINE_NAMES = {"DL": "Delta", "AA": "American", "UA": "United"}
+AIRLINE_NAMES = {"DL": "Delta", "AA": "American", "UA": "United", "WN": "Southwest"}
 # Each airline's own product names for the cabins we offer
 AA_CABIN = {"basic": "BASIC_ECONOMY", "main": "COACH", "main_extra": "COACH_PLUS", "business": "BUSINESS"}
 AA_CABIN_NAMES = {"basic": "Basic Economy", "main": "Main Cabin", "main_extra": "Main Cabin Extra", "business": "Business"}
 UA_CABIN = {"basic": {"ECO-BASIC"}, "main": {"ECONOMY"}, "economy_plus": {"ECONOMY-MERCH-EPLUS"},
             "business": {"MIN-BUSINESS-OR-FIRST", "BUSINESS", "FIRST", "PREMIUM-PLUS"}}
 UA_CABIN_NAMES = {"basic": "Basic Economy", "main": "United Economy", "economy_plus": "Economy Plus", "business": "Business"}
+
+# Southwest's own codes for the fares it now calls Basic / Choice / Choice Preferred / Choice Extra
+WN_CABIN = {"basic": "WGA", "choice": "PLU", "choice_preferred": "ANY", "choice_extra": "BUS"}
+WN_CABIN_NAMES = {"basic": "Basic", "choice": "Choice", "choice_preferred": "Choice Preferred",
+                  "choice_extra": "Choice Extra"}
 
 def best_offer(candidates, fastest):
     """candidates: (minutes, price, extras). Fastest = shortest trip, ties to the cheaper fare; else cheapest."""
@@ -436,6 +443,83 @@ async def search_united(page, trip):
             "arrive_time": (legs[-1].get("destinationDateTime") or "")[11:16],
             "flights": " / ".join(flights)}, "ok", None
 
+async def search_southwest(page, trip):
+    """Southwest prices each direction on its own, so a round trip is the two halves added together."""
+    cabin = trip.get("cabin_class", "choice")
+    family = WN_CABIN.get(cabin)
+    cabin_name = WN_CABIN_NAMES.get(cabin, cabin)
+    if not family:
+        return None, "cabin_unavailable", f"Southwest doesn't sell {cabin_name}."
+    pinned = flight_designators(trip.get("outbound_flights", ""))
+    payload = {}
+    tab = await page.context.new_page()
+    async def on_response(resp):
+        if "air-booking/page/air/booking/shopping" in resp.url:
+            try:
+                payload["body"] = await resp.text()
+            except Exception:
+                pass
+    tab.on("response", on_response)
+    try:
+        url = ("https://www.southwest.com/air/booking/select-depart.html?adultPassengersCount=1"
+               f"&departureDate={trip['travel_date']}&departureTimeOfDay=ALL_DAY"
+               f"&destinationAirportCode={trip['destination']}&fareType=USD"
+               f"&originationAirportCode={trip['origin']}&passengerType=ADULT"
+               f"&returnDate={trip['return_date']}&returnTimeOfDay=ALL_DAY&tripType=roundtrip")
+        await tab.goto(url, timeout=90000, wait_until="domcontentloaded")
+        for _ in range(40):
+            await tab.wait_for_timeout(2000)
+            if payload.get("body"):
+                break
+        if not payload.get("body"):
+            body = await tab.inner_text("body")
+            if re.search(r"no flights|not available|doesn't fly", body, re.I):
+                return None, "no_flights", "Southwest has no flights on this route for these dates."
+            return None, "error", f"Southwest returned no fares (page: {await tab.title()})"
+    finally:
+        tab.remove_listener("response", on_response)
+        await tab.close()
+
+    try:
+        bounds = json.loads(payload["body"])["data"]["searchResults"]["airProducts"]
+    except Exception:
+        return None, "error", "Southwest's fare data wasn't in the shape we expect."
+    if len(bounds) < 2:
+        return None, "no_flights", "Southwest has no flights on this route for these dates."
+
+    def options(bound, want_pinned):
+        """(minutes, price, flights, depart, arrive, stops) for every flight that sells this fare."""
+        out = []
+        for det in bound.get("details", []):
+            flights = [f"WN{int(n)}" for n in det.get("flightNumbers", [])]
+            if want_pinned and pinned and flights != pinned:
+                continue
+            prod = ((det.get("fareProducts") or {}).get("ADULT") or {}).get(family) or {}
+            fare = (prod.get("fare") or {}).get("totalFare") or {}
+            if prod.get("availabilityStatus") != "AVAILABLE" or not fare.get("value"):
+                continue
+            out.append((det.get("totalDuration") or 0, float(fare["value"]), flights,
+                        det.get("departureTime", ""), det.get("arrivalTime", ""),
+                        max(len(det.get("segments", [])) - 1, 0)))
+        return out
+
+    outbound = options(bounds[0], True)
+    if pinned and not outbound:
+        if not options(bounds[0], False):
+            return None, "cabin_unavailable", f"{cabin_name} isn't available on this route for these dates."
+        return None, "flights_not_found", f"Southwest didn't offer {' / '.join(pinned)} on these dates."
+    ret = options(bounds[1], False)
+    if not outbound or not ret:
+        return None, "cabin_unavailable", f"{cabin_name} isn't available on this route for these dates."
+
+    fastest = not pinned and trip.get("preference") == "fastest"
+    minutes, price, flights, dep, arr, stops = best_offer(
+        [(o[0], o[1], o) for o in outbound], fastest)[2]
+    back_price = min(r[1] for r in ret)          # the return half is always the cheapest seat going back
+    return {"price": price + back_price, "airline": "Southwest", "fare_class": cabin_name,
+            "stops": str(stops), "depart_time": dep, "arrive_time": arr,
+            "flights": " / ".join(flights)}, "ok", None
+
 class AirportNotServed(Exception):
     pass
 
@@ -546,13 +630,26 @@ async def guarded_search(search, page, trip):
         print(f"  {status}: {detail}")
     return result, status, detail
 
+def clear_stale_chrome_locks():
+    """A Chrome that died badly leaves lock files behind, and the next launch exits on sight of them."""
+    profile = BASE_DIR / "chrome-profile"
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        try:
+            (profile / name).unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"  couldn't clear {name}: {e}")
+
 async def scrape_trips(cfg, trips):
     """Search every trip in one Chrome session; returns {trip_id: (result, status, detail)}."""
+    clear_stale_chrome_locks()
     chrome = subprocess.Popen(
         [chrome_path(cfg), f"--remote-debugging-port={CDP_PORT}",
          f"--user-data-dir={BASE_DIR / 'chrome-profile'}",
          "--no-first-run", "--no-default-browser-check", "--window-size=1280,900", "about:blank"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Chrome's own output goes to a file: when it refuses to start, this is the only place it says why
+        stdout=open(BASE_DIR / "chrome.log", "w"), stderr=subprocess.STDOUT, start_new_session=True)
     results = {}
     try:
         async with async_playwright() as p:
@@ -570,7 +667,8 @@ async def scrape_trips(cfg, trips):
             for trip in trips:
                 airline = trip.get("airline", "DL")
                 print(f"\n── {trip.get('label', trip['id'])} ({AIRLINE_NAMES.get(airline, airline)}) ──")
-                search = {"AA": search_american, "UA": search_united}.get(airline, search_trip)
+                search = {"AA": search_american, "UA": search_united,
+                          "WN": search_southwest}.get(airline, search_trip)
                 for attempt in range(2):
                     results[trip["id"]] = await guarded_search(search, page, trip)
                     if results[trip["id"]][1] != "error":
@@ -903,8 +1001,10 @@ def user_route_trips(conn):
          "airline": r.get("airline") or "DL",
          "outbound_flights": r["outbound_flights"], "cabin_class": r["cabin_class"],
          "preference": r["preference"]}
-        for r in conn.execute("SELECT DISTINCT ON (route_id) * FROM user_trips "
-                              "WHERE travel_date > %s AND archived_at IS NULL ORDER BY route_id, id", (utcnow().date(),))
+        for r in conn.execute("SELECT DISTINCT ON (t.route_id) t.* FROM user_trips t "
+                              "JOIN users u ON u.id = t.user_id "
+                              "WHERE t.travel_date > %s AND t.archived_at IS NULL AND u.disabled_at IS NULL "
+                              "ORDER BY t.route_id, t.id", (utcnow().date(),))
     ]
 
 def record_result(conn, cfg, trip, outcome, legacy, source="scheduled"):
@@ -934,8 +1034,12 @@ def record_result(conn, cfg, trip, outcome, legacy, source="scheduled"):
 
 async def run(cfg):
     conn = open_db(cfg)
-    sync_repo(cfg)
-    trips = json.loads((REPO_DIR / "watchlist.json").read_text(encoding="utf-8")).get("trips", [])
+    trips = []
+    if GIT:
+        sync_repo(cfg)
+        trips = json.loads((REPO_DIR / "watchlist.json").read_text(encoding="utf-8")).get("trips", [])
+    else:
+        print("git not installed: skipping the legacy dashboard; website trips are unaffected")
     legacy_ids = {t["id"] for t in trips}
     # Old watchlist trips stop once departed, or once every website user tracking that route archived it
     archived_everywhere = {r["route_id"] for r in conn.execute(
@@ -968,7 +1072,7 @@ async def run(cfg):
         outcome = results.get(trip["id"], (None, "error", "not searched"))
         any_scraped |= record_result(conn, cfg, trip, outcome, trip["id"] in legacy_ids)
 
-    if any_scraped:
+    if any_scraped and GIT:
         print("\n── Updating dashboard ──")
         push_to_github(cfg, generate_html(conn, trips))
     sent = send_digests(cfg, conn)

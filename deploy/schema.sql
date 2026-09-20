@@ -236,6 +236,7 @@ CREATE TABLE public.users (
     email_verified_at timestamp without time zone,
     is_admin boolean DEFAULT false NOT NULL,
     google_sub text,
+    apple_sub text,
     home_airport text,
     role text DEFAULT 'basic'::text NOT NULL,
     CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['basic'::text, 'researcher'::text, 'admin'::text])))
@@ -470,3 +471,14 @@ ALTER TABLE ONLY public.user_trips
 
 \unrestrict i5BdIYDZvar5u9EFKZWmicKM3VOMIY3leczNT36ec4Qh1v1vWQO1JHUtH1zz7iF
 
+
+
+--
+-- Name: oauth_states; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.oauth_states (
+    state_hash text NOT NULL,
+    nonce_hash text NOT NULL,
+    expires_at timestamp without time zone NOT NULL
+);
