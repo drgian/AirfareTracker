@@ -182,7 +182,7 @@ body.dev{padding-top:22px}
 .row-off{opacity:.55}
 .alogo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;
   font:700 10.5px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.04em;color:#fff;flex:none}
-.alogo.DL{background:#003366}.alogo.AA{background:#0d5eaf}.alogo.UA{background:#1c2b5e}
+.alogo.DL{background:#003366}.alogo.AA{background:#0d5eaf}.alogo.UA{background:#1c2b5e}.alogo.WN{background:#304cb2}
 .alogo.sm{width:20px;height:20px;border-radius:5px;font-size:9px}
 /* the logos carry their own backgrounds, so no tile behind them */
 .alogo-img{height:24px;width:auto;max-width:96px;object-fit:contain;flex:none;display:block;border-radius:4px}
@@ -226,9 +226,9 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
   <main>
     <section id="v-signup" hidden>
       <div class="hero">
-        <span class="delta-only">Delta, American &amp; United fares</span>
+        <span class="delta-only">Delta, American, United &amp; Southwest</span>
         <h1>Know the moment your fare changes.</h1>
-        <p class="lede">FlightFare checks Delta, American and United twice a day for the trips you care about, and sends one daily summary when prices move.</p>
+        <p class="lede">FlightFare checks Delta, American, United and Southwest twice a day for the trips you care about, and sends one daily summary when prices move.</p>
         <form class="signup" id="signup-form">
           <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
           <button class="btn primary" type="submit">Get started</button>
@@ -326,9 +326,9 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
   </main>
   <footer>
     <button class="fbbtn" id="feedback-open" type="button">💬 Send feedback</button><br>
-    Tracks <b>Delta</b>, <b>American</b> and <b>United</b> fares. Fares are round-trip per passenger incl. taxes,
+    Tracks <b>Delta</b>, <b>American</b>, <b>United</b> and <b>Southwest</b> fares. Fares are round-trip per passenger incl. taxes,
     as shown on the airline's own site.<br>
-    FlightFare is an independent service and is not affiliated with Delta Air Lines, American Airlines or United Airlines.<br>
+    FlightFare is an independent service and is not affiliated with Delta Air Lines, American Airlines, United Airlines or Southwest Airlines.<br>
     <a href="/privacy.html" style="color:inherit">Privacy</a> · <a href="/terms.html" style="color:inherit">Terms</a> · <span id="version"></span>
   </footer>
 </div>
@@ -415,7 +415,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -793,6 +793,9 @@ let AIRLINES = [
   { code: 'UA', name: 'United', default_cabin: 'main', cabins: [
     { value: 'main', label: 'United Economy' }, { value: 'basic', label: 'Basic Economy' },
     { value: 'economy_plus', label: 'Economy Plus' }, { value: 'business', label: 'Business' }] },
+  { code: 'WN', name: 'Southwest', default_cabin: 'choice', cabins: [
+    { value: 'choice', label: 'Choice' }, { value: 'basic', label: 'Basic' },
+    { value: 'choice_preferred', label: 'Choice Preferred' }, { value: 'choice_extra', label: 'Choice Extra' }] },
 ];
 const airlineInfo = code => AIRLINES.find(a => a.code === code) || AIRLINES[0];
 const cabinName = (airline, cabin) => airlineInfo(airline).cabins.find(c => c.value === cabin)?.label || cabin;
@@ -809,16 +812,19 @@ function logo(code, small){
 }
 // Check once per visit which logo files exist, so a missing one never shows a broken image
 async function findLogos(){
-  await Promise.all(AIRLINES.flatMap(a => ['svg', 'png'].map(ext => {
-    const url = `/logos/${a.code.toLowerCase()}.${ext}`;
-    return new Promise(done => {
-      if (LOGO_FILES[a.code]) return done();
-      const probe = new Image();
-      probe.onload = () => { LOGO_FILES[a.code] = LOGO_FILES[a.code] || url; done(); };
-      probe.onerror = () => done();
-      probe.src = url;
-    });
-  })));
+  const exists = url => new Promise(done => {
+    const probe = new Image();
+    probe.onload = () => done(true);
+    probe.onerror = () => done(false);
+    probe.src = url;
+  });
+  await Promise.all(AIRLINES.map(async a => {
+    if (LOGO_FILES[a.code]) return;
+    for (const ext of ['svg', 'png']) {                 // vector first, so a leftover PNG can't win
+      const url = `/logos/${a.code.toLowerCase()}.${ext}`;
+      if (await exists(url)) { LOGO_FILES[a.code] = url; return; }
+    }
+  }));
 }
 const CABIN = { main_basic: 'Main Basic', main_classic: 'Main Classic', main_extra: 'Main Extra', comfort: 'Comfort+', first: 'First' };
 const PROBLEMS = {
