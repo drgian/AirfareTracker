@@ -13,7 +13,7 @@ import psycopg
 from psycopg.rows import dict_row
 from playwright.async_api import async_playwright
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)

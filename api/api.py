@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
-VERSION       = "1.2.0"
+VERSION       = "1.3.0"
 DATABASE_URL  = os.environ.get("DATABASE_URL", "dbname=flighttracker")
 APP_URL       = os.environ.get("APP_URL", "https://flightfare.io/")
 SMTP_HOST     = os.environ.get("SMTP_HOST", "smtp.gmail.com")

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (2026-09-19)
 
 - One price summary email a day instead of one per change: every trip that moved is listed with where it started and
   where it ended up. Target alerts stay immediate and now fire only when a price crosses below the target, rather
