@@ -179,6 +179,7 @@ body.dev{padding-top:22px}
 .seg button{border:none;background:var(--card);padding:6px 12px;font-weight:600;font-size:.84rem;cursor:pointer;color:var(--muted)}
 .seg button[aria-pressed=true]{background:var(--navy);color:#fff}
 .rolesel{padding:4px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text);font:inherit;font-size:.84rem}
+.row-off{opacity:.55}
 .alogo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;
   font:700 10.5px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.04em;color:#fff;flex:none}
 .alogo.DL{background:#003366}.alogo.AA{background:#0d5eaf}.alogo.UA{background:#1c2b5e}
@@ -1044,12 +1045,37 @@ async function renderAdmin(){
         catch (err) { alert(err.message); e.target.value = u.role; }
       } }, ...['basic', 'researcher', 'admin'].map(r => el('option', { value: r, selected: u.role === r ? true : false },
         r[0].toUpperCase() + r.slice(1))));
-    return el('tr', {},
+    const self = u.email === ME.email;
+    // Disabled: can't sign in, trips stop being priced, nothing thrown away. Remove: account and trips go for good.
+    const toggle = el('button', { class: 'btn link', disabled: self ? true : false,
+      title: self ? "You can't disable your own account" : '',
+      onclick: async () => {
+        const msg = u.disabled
+          ? `Let ${u.email} back in? Their trips start being priced again.`
+          : `Disable ${u.email}? They can't sign in and their trips stop being priced. Nothing is deleted.`;
+        if (!confirm(msg)) return;
+        try { await api(`/admin/users/${u.id}/disabled`, { method: 'POST', body: JSON.stringify({ disabled: !u.disabled }) }); renderAdmin(); }
+        catch (err) { alert(err.message); }
+      } }, u.disabled ? 'Enable' : 'Disable');
+    const remove = el('button', { class: 'btn link danger', disabled: self ? true : false,
+      title: self ? "You can't remove your own account" : '',
+      onclick: async () => {
+        const typed = prompt(`Remove ${u.email} and their ${u.trips} trip(s)? This can't be undone.\n\n`
+          + `Price history for shared routes is kept. Type the email address to confirm:`);
+        if (typed === null) return;
+        if (typed.trim().toLowerCase() !== u.email.toLowerCase()) { alert("That didn't match, so nothing was removed."); return; }
+        try { const r = await api(`/admin/users/${u.id}`, { method: 'DELETE' });
+              alert(`Removed ${r.email} and ${r.trips_removed} trip(s).`); renderAdmin(); }
+        catch (err) { alert(err.message); }
+      } }, 'Remove');
+    return el('tr', { class: u.disabled ? 'row-off' : '' },
       el('td', {}, el('button', { class: 'userlink', onclick: () => renderUserDetail(u.id) }, u.email),
-        u.role !== 'basic' ? ' ' : null, u.role !== 'basic' ? el('span', { class: 'pill ok' }, u.role) : null),
+        u.role !== 'basic' ? ' ' : null, u.role !== 'basic' ? el('span', { class: 'pill ok' }, u.role) : null,
+        u.disabled ? ' ' : null, u.disabled ? el('span', { class: 'pill bad' }, 'disabled') : null),
       el('td', {}, short(u.created_at)), el('td', {}, ago(u.last_login_at)), el('td', {}, u.trips),
       el('td', {}, el('span', { class: 'pill ' + (u.confirmed ? 'ok' : 'bad') }, u.confirmed ? 'confirmed' : 'unconfirmed')),
-      el('td', {}, u.has_password ? 'yes' : '—'), el('td', {}, btn));
+      el('td', {}, btn),
+      el('td', { style: 'white-space:nowrap' }, toggle, ' ', remove));
   });
   const checkRows = activity.checks.map(r => el('tr', {},
     el('td', {}, short(r.scraped_at)), el('td', {}, r.label || r.trip_id),
@@ -1075,7 +1101,7 @@ async function renderAdmin(){
           el('p', {}, f.message))))
       : el('div', { class: 'card pending' }, 'No feedback yet.'),
     el('h3', { class: 'admin-h' }, 'Users'),
-    table(['Email', 'Joined', 'Last sign-in', 'Trips', 'Email', 'Password', 'Role'], userRows),
+    table(['Email', 'Joined', 'Last sign-in', 'Trips', 'Email', 'Role', 'Actions'], userRows),
     el('h3', { class: 'admin-h' }, 'Recent price checks'),
     table(['When', 'Trip', 'Result', 'Flights', 'Type'], checkRows)));
 }
