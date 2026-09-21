@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
-VERSION       = "1.6.0"
+VERSION       = "1.7.0"
 DATABASE_URL  = os.environ.get("DATABASE_URL", "dbname=flighttracker")
 APP_URL       = os.environ.get("APP_URL", "https://flightfare.io/")
 API_URL       = os.environ.get("API_URL", "https://api.flightfare.io")   # where Apple posts back to
@@ -645,6 +645,93 @@ def analysis(scope: str = "all", user=Depends(research_user), conn=Depends(db)):
         r["travel_date"] = r["travel_date"].isoformat()
     return {"scope": scope, "summary": summary, "by_dow": by_dow, "by_time": by_time,
             "by_days_out": by_days_out, "changes": changes, "routes": routes}
+
+# ── Research ──────────────────────────────────────────────────────────────────
+RESEARCH_AIRLINES = ("DL", "AA", "UA")      # Southwest prices each direction separately; left out for now
+MAX_RESEARCH = 3                            # per user; admins are not limited
+
+class ResearchIn(BaseModel):
+    origin: str
+    destination: str
+    airline: str = "DL"
+    cabin_class: str = "main_classic"
+    preference: str = "cheapest"
+    nights: int = Field(ge=1, le=30)
+    weekday: int = Field(ge=0, le=6)        # 0 = Monday: the day of the week the ladder departs on
+    weeks: int = Field(default=26, ge=4, le=52)
+    label: str = Field(default="", max_length=40)
+
+def research_out(conn, r):
+    r = dict(r)
+    obs = conn.execute(
+        "SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE price_usd IS NOT NULL) AS priced, "
+        "MAX(observed_on) AS last_day, MIN(price_usd) AS lowest, MAX(price_usd) AS highest "
+        "FROM research_prices WHERE route_id=%s", (r["id"],)).fetchone()
+    pending = conn.execute("SELECT COUNT(*) AS n FROM research_queue WHERE route_id=%s AND finished_at IS NULL",
+                           (r["id"],)).fetchone()["n"]
+    r["created_at"] = r["created_at"].isoformat() if r.get("created_at") else None
+    r["observations"] = obs["n"]
+    r["priced"] = obs["priced"]
+    r["last_day"] = obs["last_day"].isoformat() if obs["last_day"] else None
+    r["lowest"], r["highest"] = obs["lowest"], obs["highest"]
+    r["waiting"] = pending
+    return r
+
+@app.get("/research/routes")
+def research_routes(user=Depends(research_user), conn=Depends(db)):
+    rows = conn.execute(
+        "SELECT r.* FROM research_routes r WHERE %s OR r.user_id=%s ORDER BY r.id",
+        (user["is_admin"], user["id"])).fetchall()
+    return [research_out(conn, r) for r in rows]
+
+@app.post("/research/routes", status_code=201)
+def add_research_route(body: ResearchIn, user=Depends(research_user), conn=Depends(db)):
+    origin, dest = body.origin.strip().upper(), body.destination.strip().upper()
+    for code in (origin, dest):
+        if code not in AIRPORTS:
+            raise HTTPException(400, f"We don't recognize \"{code[:10]}\" as an airport. Pick one from the list.")
+    if origin == dest:
+        raise HTTPException(400, "The origin and destination must be different airports.")
+    airline = body.airline.strip().upper()
+    if airline not in RESEARCH_AIRLINES:
+        raise HTTPException(400, "Research routes can track Delta, American or United for now.")
+    if body.cabin_class not in CABINS[airline]:
+        raise HTTPException(400, f"{AIRLINES[airline]} doesn't sell that cabin.")
+    if not user["is_admin"]:
+        n = conn.execute("SELECT COUNT(*) AS n FROM research_routes WHERE user_id=%s AND active",
+                         (user["id"],)).fetchone()["n"]
+        if n >= MAX_RESEARCH:
+            raise HTTPException(400, f"You can study up to {MAX_RESEARCH} routes at a time.")
+    label = body.label.strip() or f"{origin}→{dest} {AIRLINES[airline].split()[0]}"
+    r = conn.execute(
+        "INSERT INTO research_routes (user_id, label, origin, destination, airline, cabin_class, preference, "
+        "nights, weekday, weeks) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+        (user["id"], label, origin, dest, airline, body.cabin_class,
+         "fastest" if body.preference == "fastest" else "cheapest",
+         body.nights, body.weekday, body.weeks)).fetchone()
+    return research_out(conn, r)
+
+@app.delete("/research/routes/{route_id}")
+def delete_research_route(route_id: int, user=Depends(research_user), conn=Depends(db)):
+    row = conn.execute("DELETE FROM research_routes WHERE id=%s AND (%s OR user_id=%s) RETURNING label",
+                       (route_id, user["is_admin"], user["id"])).fetchone()
+    if not row:
+        raise HTTPException(404, "Research route not found.")
+    return {"label": row["label"]}
+
+@app.get("/research/routes/{route_id}/data")
+def research_data(route_id: int, user=Depends(research_user), conn=Depends(db)):
+    r = conn.execute("SELECT * FROM research_routes WHERE id=%s AND (%s OR user_id=%s)",
+                     (route_id, user["is_admin"], user["id"])).fetchone()
+    if not r:
+        raise HTTPException(404, "Research route not found.")
+    rows = conn.execute(
+        "SELECT observed_on, departure_date, days_out, depart_dow, observed_dow, price_usd, status, oil_usd, flights "
+        "FROM research_prices WHERE route_id=%s ORDER BY departure_date, observed_on", (route_id,)).fetchall()
+    for row in rows:
+        row["observed_on"] = row["observed_on"].isoformat()
+        row["departure_date"] = row["departure_date"].isoformat()
+    return {"route": research_out(conn, r), "prices": rows}
 
 # ── Trips ─────────────────────────────────────────────────────────────────────
 FLIGHT_RE  = re.compile(r"([A-Z0-9]{2})\s*(\d{1,4})")

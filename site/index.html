@@ -317,6 +317,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <div class="tabs" role="tablist" id="tabs"></div>
         <div style="display:flex;gap:8px;align-items:flex-end">
           <button class="btn" id="analysis-open" hidden>Analysis</button>
+          <button class="btn" id="research-open" hidden>Research</button>
           <button class="btn" id="admin-open" hidden>Admin</button>
           <button class="btn primary" id="add-open">+ Add trip</button>
         </div>
@@ -405,6 +406,47 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
   </form>
 </dialog>
 
+<dialog id="research-dialog">
+  <form id="research-form" novalidate>
+    <h3>Study a route</h3>
+    <p class="sub">We price this same trip every week, out to six months, every day.</p>
+    <div class="grid2">
+      <div class="field">From<div class="combo" data-for="research_origin"></div></div>
+      <div class="field">To<div class="combo" data-for="research_destination"></div></div>
+      <div class="field full">Airline
+        <div class="apicks" id="research-picks" role="group" aria-label="Airline"></div>
+        <input type="hidden" name="airline" value="DL">
+      </div>
+      <label class="field">Cabin<select name="cabin_class" id="research-cabin"></select></label>
+      <label class="field">Trip length
+        <select name="nights">
+          <option value="2">2 nights</option><option value="3">3 nights</option>
+          <option value="4" selected>4 nights</option><option value="5">5 nights</option>
+          <option value="7">7 nights</option><option value="10">10 nights</option><option value="14">14 nights</option>
+        </select>
+      </label>
+      <label class="field">Departs on
+        <select name="weekday">
+          <option value="0">Mondays</option><option value="1">Tuesdays</option><option value="2">Wednesdays</option>
+          <option value="3">Thursdays</option><option value="4" selected>Fridays</option>
+          <option value="5">Saturdays</option><option value="6">Sundays</option>
+        </select>
+      </label>
+      <label class="field">Which flights?
+        <select name="preference">
+          <option value="cheapest" selected>Cheapest</option><option value="fastest">Fastest</option>
+        </select>
+      </label>
+      <label class="field full">Name (optional)<input name="label" maxlength="40" placeholder="e.g. Vegas Fridays"></label>
+    </div>
+    <div class="err" id="research-err"></div>
+    <div class="actions">
+      <button class="btn" type="button" id="research-cancel">Cancel</button>
+      <button class="btn primary" type="submit" id="research-submit">Start studying</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="confirm-dialog">
   <form method="dialog" style="padding:22px">
     <h3>This is a new trip</h3>
@@ -419,7 +461,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -654,6 +696,7 @@ async function loadApp(){
   $('acct-email').textContent = me.email;
   $('admin-open').hidden = me.role !== 'admin';
   $('analysis-open').hidden = !['researcher', 'admin'].includes(me.role);
+  $('research-open').hidden = !['researcher', 'admin'].includes(me.role);
   $('pw-banner').hidden = me.has_password || me.has_google;
   trips = list;
   const remembered = Number(store.get(KEY.trip));
@@ -674,11 +717,17 @@ function select(id){ selectedId = id; store.set(KEY.trip, id); render(); }
 function render(){
   $('admin-open').classList.toggle('primary', selectedId === 'admin');
   $('analysis-open').classList.toggle('primary', selectedId === 'analysis');
+  $('research-open').classList.toggle('primary', selectedId === 'research');
   analysisCharts.forEach(c => c.destroy()); analysisCharts = [];
   if (selectedId === 'analysis') {
     $('tabs').replaceChildren(...trips.filter(t => !t.archived).map(t => el('button', { class: 'tab', role: 'tab', 'aria-selected': 'false', onclick: () => select(t.id) }, t.label)));
     if (chart) { chart.destroy(); chart = null; }
     return renderAnalysis();
+  }
+  if (selectedId === 'research') {
+    $('tabs').replaceChildren(...trips.filter(t => !t.archived).map(t => el('button', { class: 'tab', role: 'tab', 'aria-selected': 'false', onclick: () => select(t.id) }, t.label)));
+    if (chart) { chart.destroy(); chart = null; }
+    return renderResearch();
   }
   if (selectedId === 'admin') {
     $('tabs').replaceChildren(...trips.map(t => el('button', { class: 'tab', role: 'tab', 'aria-selected': 'false', onclick: () => select(t.id) }, t.label)));
@@ -1194,6 +1243,7 @@ async function renderUserDetail(id){
 // ── analysis (researchers and admins) ──
 let analysisCharts = [];
 $('analysis-open').addEventListener('click', () => { selectedId = 'analysis'; render(); });
+$('research-open').addEventListener('click', () => { selectedId = 'research'; render(); });
 const pct = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%';
 const MIN_N = 3;   // bars with fewer checks are shown faded as "not enough data"
 
@@ -1245,6 +1295,97 @@ function relChart(canvas, labels, rows, { connect = false } = {}){
         y: { min: -lim, max: lim, grid: { color: c => c.tick.value === 0 ? css('--faint') : grid },
              border: { display: false }, ticks: { color: ink, maxTicksLimit: 5, callback: v => (v > 0 ? '+' : '') + v + '%' } },
       } },
+  }));
+}
+
+const DOW = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+let researchCharts = [];
+
+async function renderResearch(){
+  $('panel').replaceChildren(el('div', { class: 'card pending checking' }, 'Loading research…'));
+  let routes;
+  try { routes = await api('/research/routes'); }
+  catch (err) { $('panel').replaceChildren(el('div', { class: 'card banner' }, err.message)); return; }
+  researchCharts.forEach(c => c.destroy()); researchCharts = [];
+
+  const head = el('div', { class: 'trip-head' }, el('h2', {}, 'Research'),
+    el('div', { class: 'right' }, el('span', { class: 'sub' }, 'The same trip priced every week, six months out'),
+      el('button', { class: 'btn primary', onclick: () => openResearchDialog() }, '+ Study a route')));
+
+  if (!routes.length) {
+    $('panel').replaceChildren(el('div', {}, head, el('div', { class: 'card empty' },
+      el('h2', {}, 'Nothing under study yet'),
+      el('p', { class: 'sub' }, 'Pick a route and we price that same trip every week out to six months, every day, '
+        + 'recording the price, how far out it was, the day of the week, and the price of oil.'))));
+    return;
+  }
+  const cards = routes.map(r => el('div', { class: 'card ov-card' },
+    el('div', { class: 'top' },
+      el('div', {}, el('h3', {}, logo(r.airline, true), ' ', r.label),
+        el('div', { class: 'route' }, `${r.origin} → ${r.destination} · ${r.nights} nights · departs ${DOW[r.weekday]}s`),
+        el('div', { class: 'route' }, `${cabinName(r.airline, r.cabin_class)} · ${r.weeks} weeks ahead`)),
+      el('span', { class: 'pill ' + (r.priced ? 'ok' : '') }, r.priced ? 'collecting' : 'starting')),
+    el('div', { class: 'prices' },
+      el('span', { class: 'big' }, String(r.priced)),
+      el('span', { class: 'chg flat' }, 'prices recorded'),
+      r.waiting ? el('span', { class: 'low' }, `${r.waiting} queued today`) : null),
+    el('div', { class: 'route' }, r.lowest != null
+      ? `lowest ${money(r.lowest)} · highest ${money(r.highest)} · last looked ${r.last_day || '—'}`
+      : 'no prices yet — the first ones arrive within a few hours'),
+    el('div', { class: 'acts' },
+      el('button', { class: 'btn', onclick: () => showResearchData(r.id) }, 'View data'),
+      el('button', { class: 'btn link danger', onclick: async () => {
+          if (!confirm(`Stop studying ${r.label}? Everything collected so far is deleted too.`)) return;
+          try { await api(`/research/routes/${r.id}`, { method: 'DELETE' }); renderResearch(); }
+          catch (err) { alert(err.message); }
+        } }, 'Remove'))));
+  $('panel').replaceChildren(el('div', {}, head, el('div', { class: 'ov-grid' }, ...cards)));
+}
+
+async function showResearchData(id){
+  let d;
+  try { d = await api(`/research/routes/${id}/data`); }
+  catch (err) { alert(err.message); return; }
+  researchCharts.forEach(c => c.destroy()); researchCharts = [];
+  const priced = d.prices.filter(p => p.price_usd != null);
+  const back = el('button', { class: 'btn', onclick: () => renderResearch() }, '← Back to research');
+  const head = el('div', { class: 'trip-head' }, el('h2', {}, logo(d.route.airline, true), ' ', d.route.label),
+    el('div', { class: 'right' }, el('span', { class: 'sub' }, `${priced.length} prices recorded`), back));
+  if (!priced.length) {
+    $('panel').replaceChildren(el('div', {}, head, el('div', { class: 'card pending' },
+      'No prices yet. The first searches run within a few hours of setting the route up.')));
+    return;
+  }
+  // price against how far ahead the trip was booked
+  const canvas = el('canvas', { id: 'research-chart', 'aria-label': 'Price by days before departure', role: 'img' });
+  const rows = [...priced].reverse().slice(0, 300).map(p => el('tr', {},
+    el('td', {}, p.observed_on), el('td', {}, p.departure_date), el('td', {}, p.days_out),
+    el('td', {}, DOW[p.depart_dow].slice(0, 3)), el('td', {}, el('b', {}, money(p.price_usd))),
+    el('td', {}, p.oil_usd != null ? money(p.oil_usd) : '—'), el('td', {}, p.flights || '—')));
+  $('panel').replaceChildren(el('div', {}, head,
+    el('div', { class: 'card chart' }, canvas),
+    el('details', { class: 'hist' }, el('summary', {}, `Every observation · ${priced.length}`),
+      el('div', { class: 'card tablewrap' }, el('table', {},
+        el('thead', {}, el('tr', {}, ['Looked on', 'Departs', 'Days out', 'Day', 'Price', 'Oil', 'Flights']
+          .map(h => el('th', {}, h)))),
+        el('tbody', {}, ...rows))))));
+  const byDeparture = {};
+  for (const p of priced) (byDeparture[p.departure_date] ||= []).push(p);
+  const palette = ['#003366', '#c8102e', '#0d5eaf', '#1c2b5e', '#2e7d32', '#8e24aa', '#ef6c00'];
+  const sets = Object.entries(byDeparture).slice(0, 7).map(([dep, pts], i) => ({
+    label: dep, borderColor: palette[i % palette.length], backgroundColor: palette[i % palette.length],
+    data: pts.map(p => ({ x: p.days_out, y: p.price_usd })), tension: 0.3, pointRadius: 3, borderWidth: 2,
+  }));
+  researchCharts.push(new Chart(canvas, {
+    type: 'line',
+    data: { datasets: sets },
+    options: { maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: true, labels: { color: css('--muted') } },
+        tooltip: { callbacks: { label: i => `${i.dataset.label}: ${money(i.parsed.y)} at ${i.parsed.x} days out` } } },
+      scales: {
+        x: { reverse: true, title: { display: true, text: 'days before departure', color: css('--muted') },
+             ticks: { color: css('--muted') }, grid: { color: css('--grid') } },
+        y: { ticks: { color: css('--muted'), callback: v => money(v) }, grid: { color: css('--grid') } } } },
   }));
 }
 
@@ -1441,6 +1582,44 @@ function readForm(){
   return { ...f, outbound_flights: outbound, preference: outbound ? 'cheapest' : f.preference, label: f.label.trim(),
            alert_below: f.alert_below ? Number(f.alert_below) : null };
 }
+const researchDlg = $('research-dialog'), researchForm = $('research-form');
+const researchCombos = {};
+document.querySelectorAll('#research-dialog .combo').forEach(c => {
+  makeCombo(c);
+  researchCombos[c.dataset.for.replace('research_', '')] = c;
+});
+function setResearchAirline(code){
+  researchForm.airline.value = code;
+  $('research-picks').replaceChildren(...AIRLINES.filter(a => a.code !== 'WN').map(a => el('button', {
+    type: 'button', class: 'apick', 'aria-pressed': String(a.code === code),
+    onclick: () => setResearchAirline(a.code),
+  }, logo(a.code), a.name)));
+  const info = airlineInfo(code);
+  $('research-cabin').replaceChildren(...info.cabins.map(c => el('option', { value: c.value }, c.label)));
+  $('research-cabin').value = info.default_cabin;
+}
+async function openResearchDialog(){
+  researchForm.reset(); $('research-err').textContent = '';
+  await Promise.all([loadAirports(), loadAirlineList().then(findLogos)]);
+  setResearchAirline('DL');
+  researchCombos.origin.set(ME?.home_airport || ''); researchCombos.destination.set('');
+  researchDlg.showModal();
+}
+$('research-cancel').addEventListener('click', () => researchDlg.close());
+onSubmit('research-form', 'research-err', async () => {
+  const f = Object.fromEntries(new FormData(researchForm));
+  // the airport pickers name their fields after the container they live in
+  const origin = f.research_origin, destination = f.research_destination;
+  if (!origin || !destination) throw new Error('Pick both airports from the list.');
+  if (origin === destination) throw new Error('The origin and destination must be different airports.');
+  await api('/research/routes', { method: 'POST', body: JSON.stringify({
+    origin, destination, airline: f.airline, cabin_class: f.cabin_class,
+    preference: f.preference, nights: Number(f.nights), weekday: Number(f.weekday), label: f.label.trim(),
+  }) });
+  researchDlg.close();
+  renderResearch();
+});
+
 function askReplaceOrBoth(t){
   return new Promise(resolve => {
     const c = $('confirm-dialog');

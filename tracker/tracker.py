@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Flight price tracker — Delta.com → GitHub Pages dashboard."""
 
-import asyncio, contextlib, json, re, shutil, smtplib, socket, subprocess, sys, os, time, traceback
+import asyncio, contextlib, json, random, re, shutil, smtplib, socket, subprocess, sys, os, time, traceback
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
@@ -13,7 +13,7 @@ import psycopg
 from psycopg.rows import dict_row
 from playwright.async_api import async_playwright
 
-VERSION = "1.5.0"
+VERSION = "1.7.0"
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -630,6 +630,20 @@ async def guarded_search(search, page, trip):
         print(f"  {status}: {detail}")
     return result, status, detail
 
+def ensure_display():
+    """Chrome needs an X display.
+
+    On a Wayland machine Chrome will quietly attach to the compositor instead, and in that mode it
+    never opens its remote-debugging port - so we pin it to X11 and to the display we intend.
+    """
+    if os.name == "nt":
+        return
+    if not os.environ.get("DISPLAY"):
+        os.environ["DISPLAY"] = os.environ.get("FALLBACK_DISPLAY", ":99")
+        print(f"  no DISPLAY set; using {os.environ['DISPLAY']}")
+    os.environ.pop("WAYLAND_DISPLAY", None)
+    os.environ["XDG_SESSION_TYPE"] = "x11"
+
 def clear_stale_chrome_locks():
     """A Chrome that died badly leaves lock files behind, and the next launch exits on sight of them."""
     profile = BASE_DIR / "chrome-profile"
@@ -641,11 +655,62 @@ def clear_stale_chrome_locks():
         except OSError as e:
             print(f"  couldn't clear {name}: {e}")
 
+async def open_browser(cfg):
+    """Start Chrome and attach to it. Returns (process, browser, page, playwright context)."""
+    ensure_display()
+    clear_stale_chrome_locks()
+    prefix = []
+    if os.name != "nt" and os.environ.get("INVOCATION_ID") and shutil.which("systemd-run"):
+        prefix = ["systemd-run", "--user", "--scope", "--collect", "-q"]
+    ozone = [] if os.name == "nt" else ["--ozone-platform=x11"]
+    chrome = subprocess.Popen(
+        prefix + [chrome_path(cfg), f"--remote-debugging-port={CDP_PORT}", *ozone,
+         f"--user-data-dir={BASE_DIR / 'chrome-profile'}",
+         "--no-first-run", "--no-default-browser-check", "--window-size=1280,900", "about:blank"],
+        stdout=open(BASE_DIR / "chrome.log", "w"), stderr=subprocess.STDOUT, start_new_session=True)
+    p_ctx = await async_playwright().start()
+    browser = None
+    for _ in range(120):
+        try:
+            browser = await p_ctx.chromium.connect_over_cdp(f"http://127.0.0.1:{CDP_PORT}")
+            break
+        except Exception:
+            await asyncio.sleep(0.5)
+    if browser is None:
+        chrome.terminate()
+        await p_ctx.stop()
+        raise RuntimeError("Could not attach to Chrome")
+    ctx = browser.contexts[0]
+    page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+    return chrome, browser, page, p_ctx
+
+async def close_browser(chrome, browser, p_ctx):
+    try:
+        if browser:
+            cdp = await browser.new_browser_cdp_session()
+            await cdp.send("Browser.close")
+    except Exception:
+        pass
+    for closer in (lambda: p_ctx and p_ctx.stop(), lambda: chrome and chrome.terminate()):
+        try:
+            r = closer()
+            if hasattr(r, "__await__"):
+                await r
+        except Exception:
+            pass
+
 async def scrape_trips(cfg, trips):
     """Search every trip in one Chrome session; returns {trip_id: (result, status, detail)}."""
+    ensure_display()
     clear_stale_chrome_locks()
+    # Under a systemd service, Chrome exits the moment it forks. Run it in its own transient scope
+    # so it lives independently of this unit; everywhere else, launch it directly.
+    prefix = []
+    if os.name != "nt" and os.environ.get("INVOCATION_ID") and shutil.which("systemd-run"):
+        prefix = ["systemd-run", "--user", "--scope", "--collect", "-q"]
+    ozone = [] if os.name == "nt" else ["--ozone-platform=x11"]
     chrome = subprocess.Popen(
-        [chrome_path(cfg), f"--remote-debugging-port={CDP_PORT}",
+        prefix + [chrome_path(cfg), f"--remote-debugging-port={CDP_PORT}", *ozone,
          f"--user-data-dir={BASE_DIR / 'chrome-profile'}",
          "--no-first-run", "--no-default-browser-check", "--window-size=1280,900", "about:blank"],
         # Chrome's own output goes to a file: when it refuses to start, this is the only place it says why
@@ -654,7 +719,8 @@ async def scrape_trips(cfg, trips):
     try:
         async with async_playwright() as p:
             browser = None
-            for _ in range(30):
+            # Cold starts on a small machine can take well over 15 seconds, so wait a full minute
+            for _ in range(120):
                 try:
                     browser = await p.chromium.connect_over_cdp(f"http://127.0.0.1:{CDP_PORT}")
                     break
@@ -686,6 +752,106 @@ async def scrape_trips(cfg, trips):
     finally:
         chrome.terminate()
     return results
+
+# ── Research: the same trip priced every week, six months out ─────────────────
+RESEARCH_SPREAD_HOURS = 20      # spread the day's searches over this many hours, not in a burst
+
+def wti_price(conn):
+    """Today's WTI oil price, fetched once a day from the St. Louis Fed (no key needed).
+
+    The series lags by a few days and skips weekends, so we take the most recent published figure.
+    A missing price isn't fatal - the observation is still recorded, just without it.
+    """
+    today = utcnow().date()
+    row = conn.execute("SELECT wti_usd FROM market_prices WHERE day=%s", (today,)).fetchone()
+    if row:
+        return row["wti_usd"]
+    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILWTICO"
+    csv = ""
+    try:
+        import urllib.request
+        csv = urllib.request.urlopen(url, timeout=25).read().decode()
+    except Exception:
+        try:      # Python's SSL trust store is unreliable across these machines; curl is not
+            csv = subprocess.run(["curl", "-sL", "--max-time", "25", url],
+                                 capture_output=True, text=True, check=True).stdout
+        except Exception:
+            csv = ""
+    price = None
+    for line in reversed(csv.strip().splitlines()):
+        parts = line.split(",")
+        if len(parts) == 2 and parts[0][:1].isdigit():
+            try:
+                price = float(parts[1])
+                break
+            except ValueError:
+                continue          # FRED writes "." on holidays
+    if price is None:
+        print("  couldn't fetch the oil price; recording without it")
+        return None
+    conn.execute("INSERT INTO market_prices (day, wti_usd) VALUES (%s,%s) ON CONFLICT (day) DO NOTHING",
+                 (today, price))
+    print(f"  oil (WTI): ${price:,.2f}")
+    return price
+
+def build_research_queue(conn):
+    """Each morning, lay out the day's ladder: every week from next week to six months out."""
+    today = utcnow().date()
+    made = 0
+    for r in conn.execute("SELECT * FROM research_routes WHERE active").fetchall():
+        # first rung: the next occurrence of the chosen weekday, at least 7 days out
+        ahead = (r["weekday"] - (today.weekday())) % 7 or 7
+        first = today + timedelta(days=ahead if ahead >= 7 else ahead + 7)
+        rungs = [first + timedelta(weeks=w) for w in range(r["weeks"])]
+        gap = (RESEARCH_SPREAD_HOURS * 3600) / max(len(rungs), 1)
+        start = utcnow()
+        for i, dep in enumerate(rungs):
+            ret = dep + timedelta(days=r["nights"])
+            due = start + timedelta(seconds=gap * i + random.uniform(0, gap * 0.4))
+            made += conn.execute(
+                "INSERT INTO research_queue (route_id, departure_date, return_date, due_at, for_day) "
+                "VALUES (%s,%s,%s,%s,%s) ON CONFLICT (route_id, departure_date, for_day) DO NOTHING",
+                (r["id"], dep, ret, due, today)).rowcount
+    if made:
+        print(f"Research: queued {made} searches for today, spread over {RESEARCH_SPREAD_HOURS}h")
+    return made
+
+async def run_research(cfg, conn, page):
+    """Price whatever research searches are due now. One at a time, paced like everything else."""
+    due = conn.execute(
+        "SELECT q.*, r.origin, r.destination, r.airline, r.cabin_class, r.preference, r.label "
+        "FROM research_queue q JOIN research_routes r ON r.id = q.route_id "
+        "WHERE q.finished_at IS NULL AND q.due_at <= %s AND r.active ORDER BY q.due_at LIMIT 5",
+        (utcnow(),)).fetchall()
+    if not due:
+        return 0
+    oil = wti_price(conn)
+    done = 0
+    for item in due:
+        conn.execute("UPDATE research_queue SET started_at=%s WHERE id=%s", (utcnow(), item["id"]))
+        trip = {"id": f"research-{item['id']}", "label": f"{item['label']} {item['departure_date']}",
+                "airline": item["airline"], "origin": item["origin"], "destination": item["destination"],
+                "travel_date": item["departure_date"].isoformat(), "return_date": item["return_date"].isoformat(),
+                "cabin_class": item["cabin_class"], "preference": item["preference"], "outbound_flights": ""}
+        search = {"AA": search_american, "UA": search_united}.get(item["airline"], search_trip)
+        print(f"\n── research: {trip['label']} ──")
+        result, status, detail = await guarded_search(search, page, trip)
+        today = utcnow().date()
+        conn.execute(
+            "INSERT INTO research_prices (route_id, observed_on, departure_date, return_date, days_out, "
+            "depart_dow, observed_dow, price_usd, status, notes, flights, depart_time, arrive_time, stops, oil_usd) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+            "ON CONFLICT (route_id, observed_on, departure_date) DO UPDATE SET price_usd=EXCLUDED.price_usd, "
+            "status=EXCLUDED.status, flights=EXCLUDED.flights, oil_usd=EXCLUDED.oil_usd",
+            (item["route_id"], today, item["departure_date"], item["return_date"],
+             (item["departure_date"] - today).days, item["departure_date"].weekday(), today.weekday(),
+             result["price"] if result else None, status, detail,
+             result["flights"] if result else None, result["depart_time"] if result else None,
+             result["arrive_time"] if result else None, result["stops"] if result else None, oil))
+        conn.execute("UPDATE research_queue SET finished_at=%s WHERE id=%s", (utcnow(), item["id"]))
+        done += 1
+        await asyncio.sleep(SEARCH_GAP)
+    return done
 
 # ── HTML generation ───────────────────────────────────────────────────────────
 def generate_html(conn, trips):
@@ -1091,7 +1257,8 @@ async def worker(cfg):
                "database_url": cfg["database_url"].replace(f"port={old}", f"port={WORKER_PORT}")}
     print(f"[{utcnow():%Y-%m-%d %H:%M}Z] worker {VERSION} started", flush=True)
     tunnel = conn = None
-    last_digest = utcnow()
+    last_digest = last_research = utcnow()
+    research_day = utcnow().date() - timedelta(days=1)
     while True:
         try:
             if tunnel is None or tunnel.poll() is not None:
@@ -1118,6 +1285,24 @@ async def worker(cfg):
             if utcnow() - last_digest > timedelta(minutes=10):
                 last_digest = utcnow()
                 if send_digests(cfg, conn):
+                    sys.stdout.flush()
+            # Research runs in the gaps: it never delays a user's instant check, which is handled above
+            if not wanted and utcnow() - last_research > timedelta(minutes=2):
+                last_research = utcnow()
+                if utcnow().date() > research_day:
+                    research_day = utcnow().date()
+                    build_research_queue(conn)
+                pending = conn.execute(
+                    "SELECT COUNT(*) AS n FROM research_queue WHERE finished_at IS NULL AND due_at <= %s",
+                    (utcnow(),)).fetchone()["n"]
+                if pending:
+                    with scrape_lock():
+                        chrome, page, browser, p_ctx = None, None, None, None
+                        try:
+                            chrome, browser, page, p_ctx = await open_browser(cfg)
+                            await run_research(cfg, conn, page)
+                        finally:
+                            await close_browser(chrome, browser, p_ctx)
                     sys.stdout.flush()
         except Exception:
             traceback.print_exc()

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.0 (2026-09-21)
+
+- Research tab for researchers and admins: pick a route and we price that same trip every week out to six months,
+  every day, recording the price, how far ahead it was booked, the day of the week, and the price of oil (WTI, from
+  the St. Louis Fed). Delta, American and United; three routes per person, unlimited for admins.
+- The day's searches are spread over about 19 hours with random gaps, and only run when nobody is waiting on an
+  instant check, so research never delays a real trip.
+- Chrome fixes from the Linux work: it is pinned to X11 (on a Wayland desktop it would silently refuse to open its
+  debugging port) and stale profile locks are cleared before each run.
+
 ## 1.6.0 (2026-09-20)
 
 - Admin: click a user's email to unfold the flights they're tracking underneath — airline, route, dates, cabin,
