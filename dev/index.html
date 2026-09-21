@@ -1243,6 +1243,7 @@ async function renderUserDetail(id){
 // ── analysis (researchers and admins) ──
 let analysisCharts = [];
 $('analysis-open').addEventListener('click', () => { selectedId = 'analysis'; render(); });
+$('research-open').addEventListener('click', () => { selectedId = 'research'; render(); });
 const pct = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%';
 const MIN_N = 3;   // bars with fewer checks are shown faded as "not enough data"
 
