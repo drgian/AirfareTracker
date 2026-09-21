@@ -1608,10 +1608,12 @@ async function openResearchDialog(){
 $('research-cancel').addEventListener('click', () => researchDlg.close());
 onSubmit('research-form', 'research-err', async () => {
   const f = Object.fromEntries(new FormData(researchForm));
-  if (!f.origin || !f.destination) throw new Error('Pick both airports from the list.');
-  if (f.origin === f.destination) throw new Error('The origin and destination must be different airports.');
+  // the airport pickers name their fields after the container they live in
+  const origin = f.research_origin, destination = f.research_destination;
+  if (!origin || !destination) throw new Error('Pick both airports from the list.');
+  if (origin === destination) throw new Error('The origin and destination must be different airports.');
   await api('/research/routes', { method: 'POST', body: JSON.stringify({
-    origin: f.origin, destination: f.destination, airline: f.airline, cabin_class: f.cabin_class,
+    origin, destination, airline: f.airline, cabin_class: f.cabin_class,
     preference: f.preference, nights: Number(f.nights), weekday: Number(f.weekday), label: f.label.trim(),
   }) });
   researchDlg.close();
