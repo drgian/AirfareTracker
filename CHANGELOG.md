@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1 (2026-09-21)
+
+- Fix: on a phone the buttons at the bottom of the Add trip and Study a route dialogs could sit off screen and
+  couldn't be scrolled to. Tall dialogs now scroll, and the buttons stay pinned in view.
+
 ## 1.7.0 (2026-09-21)
 
 - Research tab for researchers and admins: pick a route and we price that same trip every week out to six months,
