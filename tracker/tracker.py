@@ -2,6 +2,11 @@
 """Flight price tracker — Delta.com → GitHub Pages dashboard."""
 
 import asyncio, contextlib, json, random, re, shutil, smtplib, socket, subprocess, sys, os, time, traceback
+
+try:
+    import jwt              # only needed for push notifications
+except ImportError:
+    jwt = None
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
@@ -13,7 +18,7 @@ import psycopg
 from psycopg.rows import dict_row
 from playwright.async_api import async_playwright
 
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -173,6 +178,11 @@ def fire_alerts(cfg, conn, recipients, trip, new_price, prev_price):
                                   f"Alert threshold: ${threshold:,.0f}",
                                   f"Previous price: ${prev_price:,.0f}" if prev_price else "", "",
                                   f"Dashboard: {link}"]))
+            push_to_email(cfg, conn, email,
+                          f"{origin} → {dest} is ${new_price:,.0f}",
+                          f"Below your ${threshold:,.0f} target"
+                          + (f", down from ${prev_price:,.0f}" if prev_price else ""),
+                          thread=trip["id"])
 
 def send_digests(cfg, conn, force=False):
     """One summary email per person per day, covering every price change since the last one."""
@@ -224,6 +234,10 @@ def send_digests(cfg, conn, force=False):
             conn.execute("UPDATE price_alerts SET sent_at=NULL WHERE id = ANY(%s)", (claimed,))
             print(f"  couldn't send the summary to {email}, will retry: {e}")
             continue
+        biggest = summaries[0]
+        push_to_email(cfg, conn, email, subject.replace("FlightFare: ", ""),
+                      f"Biggest move: {biggest[1]['last']['label'] or biggest[1]['last']['route_id']} "
+                      f"${biggest[2]:,.0f} → ${biggest[3]:,.0f}", thread="digest")
         sent += 1
     return sent
 
@@ -753,6 +767,67 @@ async def scrape_trips(cfg, trips):
         chrome.terminate()
     return results
 
+# ── Push notifications to the iOS app ─────────────────────────────────────────
+APNS_HOSTS = {"production": "api.push.apple.com", "sandbox": "api.sandbox.push.apple.com"}
+
+def apns_token(cfg):
+    """A short-lived JWT signed with the APNs key. Apple allows reuse for up to an hour."""
+    now = int(time.time())
+    cached = getattr(apns_token, "_cache", None)
+    if cached and now - cached[1] < 2400:
+        return cached[0]
+    key_file = BASE_DIR / cfg.get("apns_key_file", "apns.p8")
+    if not key_file.exists():
+        return None
+    token = jwt.encode({"iss": cfg["apple_team_id"], "iat": now}, key_file.read_text(),
+                       algorithm="ES256", headers={"kid": cfg["apns_key_id"]})
+    apns_token._cache = (token, now)
+    return token
+
+def send_push(cfg, conn, user_ids, title, body, thread=None):
+    """Send one notification to every phone belonging to these people. Silent if push isn't configured."""
+    if not user_ids or not cfg.get("apns_key_id"):
+        return 0
+    token = apns_token(cfg)
+    if not token:
+        print("  push: no APNs key on this machine, skipping")
+        return 0
+    rows = conn.execute("SELECT id, token, environment FROM devices WHERE user_id = ANY(%s) AND failed_at IS NULL",
+                        (list(user_ids),)).fetchall()
+    sent = 0
+    for d in rows:
+        payload = json.dumps({"aps": {"alert": {"title": title, "body": body}, "sound": "default",
+                                      "thread-id": thread or "flightfare"}})
+        url = f"https://{APNS_HOSTS.get(d['environment'], APNS_HOSTS['production'])}/3/device/{d['token']}"
+        try:
+            out = subprocess.run(
+                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--http2", "-X", "POST",
+                 "-H", f"authorization: bearer {token}",
+                 "-H", f"apns-topic: {cfg.get('apple_bundle_id', 'io.flightfare.app')}",
+                 "-H", "apns-push-type: alert", "-H", "apns-priority: 10",
+                 "-d", payload, url, "--max-time", "20"],
+                capture_output=True, text=True).stdout.strip()
+        except Exception as e:
+            print(f"  push failed: {e}")
+            continue
+        if out == "200":
+            sent += 1
+        elif out in ("410", "400"):     # the phone uninstalled the app or the token is bad
+            conn.execute("UPDATE devices SET failed_at=%s WHERE id=%s", (utcnow(), d["id"]))
+            print(f"  push: device no longer reachable ({out}), retired it")
+        else:
+            print(f"  push: Apple said {out}")
+    if sent:
+        print(f"  pushed to {sent} device(s)")
+    return sent
+
+def push_to_email(cfg, conn, email, title, body, thread=None):
+    """Same notification, addressed the way the rest of the alerting is: by email."""
+    if not cfg.get("apns_key_id"):
+        return 0
+    ids = [r["id"] for r in conn.execute("SELECT id FROM users WHERE lower(email)=lower(%s)", (email,))]
+    return send_push(cfg, conn, ids, title, body, thread)
+
 # ── Research: the same trip priced every week, six months out ─────────────────
 RESEARCH_SPREAD_HOURS = 20      # spread the day's searches over this many hours, not in a burst
 
@@ -835,7 +910,13 @@ async def run_research(cfg, conn, page):
                 "cabin_class": item["cabin_class"], "preference": item["preference"], "outbound_flights": ""}
         search = {"AA": search_american, "UA": search_united}.get(item["airline"], search_trip)
         print(f"\n── research: {trip['label']} ──")
-        result, status, detail = await guarded_search(search, page, trip)
+        for attempt in range(2):        # airlines occasionally return an empty page; one retry, as elsewhere
+            result, status, detail = await guarded_search(search, page, trip)
+            if status != "error":
+                break
+            if attempt == 0:
+                print("  Retrying...")
+                await asyncio.sleep(SEARCH_GAP)
         today = utcnow().date()
         conn.execute(
             "INSERT INTO research_prices (route_id, observed_on, departure_date, return_date, days_out, "

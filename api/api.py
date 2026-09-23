@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
-VERSION       = "1.7.0"
+VERSION       = "1.8.0"
 DATABASE_URL  = os.environ.get("DATABASE_URL", "dbname=flighttracker")
 APP_URL       = os.environ.get("APP_URL", "https://flightfare.io/")
 API_URL       = os.environ.get("API_URL", "https://api.flightfare.io")   # where Apple posts back to
@@ -37,6 +37,7 @@ GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 # Sign in with Apple: the Services ID is the web client. Apple posts the identity token straight back,
 # so no private key is needed for web sign-in.
 APPLE_SERVICES_ID = os.environ.get("APPLE_SERVICES_ID", "")
+APPLE_APP_ID  = os.environ.get("APPLE_APP_ID", "io.flightfare.app")   # the iOS app signs in as this
 APPLE_JWKS    = jwt.PyJWKClient("https://appleid.apple.com/auth/keys", cache_keys=True, lifespan=3600)
 APPLE_AUTH_URL = "https://appleid.apple.com/auth/authorize"
 GOOGLE_JWKS   = jwt.PyJWKClient("https://www.googleapis.com/oauth2/v3/certs", cache_keys=True, lifespan=3600)
@@ -268,6 +269,42 @@ def apple_start(request: Request, conn=Depends(db)):
     })
     return RedirectResponse(f"{APPLE_AUTH_URL}?{params}", status_code=302)
 
+class AppleNativeIn(BaseModel):
+    identity_token: str = Field(max_length=5000)
+    full_name: str = Field(default="", max_length=120)
+
+@app.post("/auth/apple/native")
+def apple_native(body: AppleNativeIn, request: Request, conn=Depends(db)):
+    """Sign in from the iOS app, which gets Apple's identity token directly - no redirects involved."""
+    rate_limit("apple-native:" + client_ip(request), 30, 900)
+    try:
+        key = APPLE_JWKS.get_signing_key_from_jwt(body.identity_token)
+        claims = jwt.decode(body.identity_token, key.key, algorithms=["ES256"],
+                            audience=[APPLE_APP_ID, APPLE_SERVICES_ID] if APPLE_SERVICES_ID else APPLE_APP_ID,
+                            issuer="https://appleid.apple.com")
+    except Exception:
+        raise HTTPException(401, "Apple sign-in didn't work. Please try again.")
+    email, sub = (claims.get("email") or "").strip().lower(), claims.get("sub")
+    if not sub:
+        raise HTTPException(401, "Apple sign-in didn't work. Please try again.")
+    user = conn.execute("SELECT id, email FROM users WHERE apple_sub=%s", (sub,)).fetchone()
+    if not user and email:
+        user = conn.execute("SELECT id, email FROM users WHERE email=%s", (email,)).fetchone()
+    if not user:
+        if not email:
+            # Apple only sends the address the first time; without it we have nothing to email
+            raise HTTPException(400, "Apple didn't share an email address, so we can't create your account.")
+        allowed(email)
+        refuse_if_disabled(conn, email)
+        user = conn.execute("INSERT INTO users (email, apple_sub, email_verified_at) VALUES (%s,%s,%s) "
+                            "RETURNING id, email", (email, sub, utcnow())).fetchone()
+    else:
+        allowed(user["email"])
+        refuse_if_disabled(conn, user["email"])
+        conn.execute("UPDATE users SET apple_sub=COALESCE(apple_sub, %s), "
+                     "email_verified_at=COALESCE(email_verified_at, %s) WHERE id=%s", (sub, utcnow(), user["id"]))
+    return {"session": new_session(conn, user["id"]), "email": user["email"]}
+
 @app.post("/auth/apple/callback")
 async def apple_callback(request: Request, conn=Depends(db)):
     """Apple posts here. Verify, sign the person in, and bounce back to the site with a one-time link."""
@@ -370,6 +407,34 @@ def set_password(body: PasswordIn, user=Depends(current_user), conn=Depends(db))
     valid_password(body.password)
     conn.execute("UPDATE users SET password_hash=%s WHERE id=%s", (hash_password(body.password), user["id"]))
     return {"ok": True}
+
+class DeviceIn(BaseModel):
+    token: str = Field(max_length=200)
+    platform: str = "ios"
+    environment: str = "production"
+    app_version: str = Field(default="", max_length=20)
+
+@app.post("/me/devices")
+def register_device(body: DeviceIn, user=Depends(current_user), conn=Depends(db)):
+    """Remember this phone so we can push price alerts to it."""
+    conn.execute(
+        "INSERT INTO devices (user_id, token, platform, environment, app_version) VALUES (%s,%s,%s,%s,%s) "
+        "ON CONFLICT (token) DO UPDATE SET user_id=EXCLUDED.user_id, last_seen=(now() AT TIME ZONE 'utc'), "
+        "environment=EXCLUDED.environment, app_version=EXCLUDED.app_version, failed_at=NULL",
+        (user["id"], body.token, body.platform, body.environment, body.app_version or None))
+    return {"ok": True}
+
+@app.delete("/me/devices/{token}")
+def forget_device(token: str, user=Depends(current_user), conn=Depends(db)):
+    conn.execute("DELETE FROM devices WHERE token=%s AND user_id=%s", (token, user["id"]))
+    return {"ok": True}
+
+@app.delete("/me")
+def delete_own_account(user=Depends(current_user), conn=Depends(db)):
+    """Delete your own account and trips. The App Store requires this of any app with sign-up."""
+    trips = conn.execute("SELECT COUNT(*) AS n FROM user_trips WHERE user_id=%s", (user["id"],)).fetchone()["n"]
+    conn.execute("DELETE FROM users WHERE id=%s", (user["id"],))
+    return {"deleted": user["email"], "trips_removed": trips}
 
 @app.post("/auth/logout")
 def logout(user=Depends(current_user), conn=Depends(db)):
@@ -933,4 +998,4 @@ def airlines():
 @app.get("/health")
 def health(conn=Depends(db)):
     conn.execute("SELECT 1")
-    return {"ok": True, "version": VERSION, "private": bool(PRIVATE_TO)}
+    return {"ok": True, "version": VERSION, "private": bool(PRIVATE_TO), "apple": bool(APPLE_SERVICES_ID)}

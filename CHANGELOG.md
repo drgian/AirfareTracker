@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.0 (2026-09-23)
+
+- Groundwork for the iPhone app: the API now accepts a sign-in straight from the app, remembers which phones belong
+  to you so we can notify them, and lets you delete your own account and everything attached to it.
+- Price alerts and the daily summary now also arrive as a notification on your phone, once the app is installed.
+  Nothing changes if you don't have it: email is unaffected.
+- Sign in with Apple. The button appears wherever Google's does; Apple verifies you and sends the result to our API,
+  which matches it to an existing account by email or creates one. No password and no secret to rotate.
+- Note for anyone choosing "Hide My Email": Apple gives us a relay address, which becomes its own account. Choose
+  "Share My Email" to land on an existing account.
+
 ## 1.7.1 (2026-09-21)
 
 - Fix: on a phone the buttons at the bottom of the Add trip and Study a route dialogs could sit off screen and
