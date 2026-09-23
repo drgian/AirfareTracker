@@ -193,6 +193,13 @@ table.subtable th{font-weight:600;color:var(--muted)}
 /* the logos carry their own backgrounds, so no tile behind them */
 .alogo-img{height:24px;width:auto;max-width:96px;object-fit:contain;flex:none;display:block;border-radius:4px}
 .alogo-img.sm{height:18px;max-width:70px;border-radius:3px}
+.applebtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:300px;max-width:100%;
+  height:40px;border-radius:999px;border:1px solid #000;background:#000;color:#fff;font:600 15px/1 -apple-system,
+  BlinkMacSystemFont,system-ui,sans-serif;cursor:pointer}
+.applebtn:hover{background:#111}
+.applebtn svg{width:16px;height:19px;fill:#fff}
+:root[data-theme="dark"] .applebtn, html.dark .applebtn{background:#fff;color:#000;border-color:#fff}
+:root[data-theme="dark"] .applebtn svg, html.dark .applebtn svg{fill:#000}
 .apicks{display:flex;gap:8px;flex-wrap:wrap}
 .apick{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;
   background:var(--card);color:inherit;font:inherit;font-weight:600;cursor:pointer}
@@ -242,6 +249,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         <div class="err" id="signup-err"></div>
         <p class="fine">We'll email you a link to confirm your address, then you'll choose a password.</p>
         <div class="google-area" hidden><div class="or">or</div><div class="gbtn" id="g-signup"></div></div>
+        <div class="apple-area" hidden><button type="button" class="applebtn"><svg viewBox="0 0 14 17" aria-hidden="true"><path d="M11.6 9c0-1.7 1.4-2.6 1.5-2.6-.8-1.2-2.1-1.4-2.5-1.4-1.1-.1-2.1.6-2.6.6s-1.4-.6-2.3-.6c-1.2 0-2.3.7-2.9 1.8-1.2 2.1-.3 5.3.9 7 .6.8 1.3 1.8 2.2 1.8.9 0 1.2-.6 2.3-.6s1.4.6 2.3.5c1 0 1.6-.8 2.2-1.7.7-1 1-1.9 1-2-.1 0-1.9-.7-1.9-2.8zM9.8 3.3c.5-.6.8-1.4.7-2.3-.7 0-1.6.5-2.1 1.1-.5.5-.9 1.4-.8 2.2.8.1 1.7-.4 2.2-1z"/></svg>Continue with Apple</button></div>
         <p class="switch">Already a member? <button class="btn link" data-go="signin">Sign in</button></p>
       </div>
       <div class="how">
@@ -262,6 +270,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
         </form>
         <div class="err" id="signin-err"></div>
         <div class="google-area" hidden><div class="or">or</div><div class="gbtn" id="g-signin"></div></div>
+        <div class="apple-area" hidden><button type="button" class="applebtn"><svg viewBox="0 0 14 17" aria-hidden="true"><path d="M11.6 9c0-1.7 1.4-2.6 1.5-2.6-.8-1.2-2.1-1.4-2.5-1.4-1.1-.1-2.1.6-2.6.6s-1.4-.6-2.3-.6c-1.2 0-2.3.7-2.9 1.8-1.2 2.1-.3 5.3.9 7 .6.8 1.3 1.8 2.2 1.8.9 0 1.2-.6 2.3-.6s1.4.6 2.3.5c1 0 1.6-.8 2.2-1.7.7-1 1-1.9 1-2-.1 0-1.9-.7-1.9-2.8zM9.8 3.3c.5-.6.8-1.4.7-2.3-.7 0-1.6.5-2.1 1.1-.5.5-.9 1.4-.8 2.2.8.1 1.7-.4 2.2-1z"/></svg>Continue with Apple</button></div>
         <div class="links">
           <button class="btn link" type="button" id="forgot">Forgot password?</button>
           <button class="btn link" type="button" id="email-link">Email me a sign-in link instead</button>
@@ -649,6 +658,26 @@ function initGoogle(){
     google.accounts.id.renderButton($(id), { theme: 'outline', size: 'large', shape: 'pill', text, width: 300 });
   document.querySelectorAll('.google-area').forEach(a => a.hidden = false);
 }
+// Apple sign-in: the server does the work, so the button just sends the browser there
+async function initApple(){
+  try {
+    const h = await (await fetch(API + '/health')).json();
+    if (!h.apple) return;
+    document.querySelectorAll('.apple-area').forEach(a => a.hidden = false);
+    document.querySelectorAll('.applebtn').forEach(b => b.addEventListener('click', () => {
+      location.href = API + '/auth/apple/start';
+    }));
+  } catch { /* leave the button hidden */ }
+}
+initApple();
+const APPLE_TROUBLE = {
+  expired: 'That Apple sign-in took too long. Please try again.',
+  token: "We couldn't verify your Apple sign-in. Please try again.",
+  nonce: "We couldn't verify your Apple sign-in. Please try again.",
+  noemail: 'Apple did not share an email address, so we cannot create your account.',
+  private: 'This test site is private.',
+};
+
 // Google's script loads async; the window load event waits for it
 if (document.readyState === 'complete') initGoogle(); else window.addEventListener('load', initGoogle);
 function askForPassword(){
@@ -1664,6 +1693,13 @@ form.addEventListener('submit', async e => {
 // ── boot ──
 async function boot(){
   const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get('appleerror')) {
+    const why = APPLE_TROUBLE[params.get('appleerror')] || 'Apple sign-in did not work. Please try again.';
+    history.replaceState(null, '', location.pathname);
+    show('signin');
+    $('signin-err').textContent = why;
+    return;
+  }
   if (params.get('reset')) {
     resetToken = params.get('reset');
     history.replaceState(null, '', location.pathname);
