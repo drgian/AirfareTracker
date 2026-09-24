@@ -39,6 +39,9 @@ GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 APPLE_SERVICES_ID = os.environ.get("APPLE_SERVICES_ID", "")
 APPLE_APP_ID  = os.environ.get("APPLE_APP_ID", "io.flightfare.app")   # the iOS app signs in as this
 APPLE_JWKS    = jwt.PyJWKClient("https://appleid.apple.com/auth/keys", cache_keys=True, lifespan=3600)
+# Apple signs identity tokens with RS256. Not to be confused with the ES256 we sign APNs
+# provider tokens with — mixing those up meant Apple sign-in failed silently for a week.
+APPLE_ALGORITHMS = ["RS256"]
 APPLE_AUTH_URL = "https://appleid.apple.com/auth/authorize"
 GOOGLE_JWKS   = jwt.PyJWKClient("https://www.googleapis.com/oauth2/v3/certs", cache_keys=True, lifespan=3600)
 # Set on the dev copy only: restricts every sign-in and request to these accounts
@@ -279,17 +282,20 @@ def apple_native(body: AppleNativeIn, request: Request, conn=Depends(db)):
     rate_limit("apple-native:" + client_ip(request), 30, 900)
     try:
         key = APPLE_JWKS.get_signing_key_from_jwt(body.identity_token)
-        claims = jwt.decode(body.identity_token, key.key, algorithms=["ES256"],
+        claims = jwt.decode(body.identity_token, key.key, algorithms=APPLE_ALGORITHMS,
                             audience=[APPLE_APP_ID, APPLE_SERVICES_ID] if APPLE_SERVICES_ID else APPLE_APP_ID,
                             issuer="https://appleid.apple.com")
-    except Exception:
+    except Exception as e:
+        # Say why in the log. Swallowing this is how a wrong algorithm went unnoticed for a week.
+        print(f"apple native sign-in rejected: {type(e).__name__}: {e}", flush=True)
         raise HTTPException(401, "Apple sign-in didn't work. Please try again.")
     email, sub = (claims.get("email") or "").strip().lower(), claims.get("sub")
     if not sub:
         raise HTTPException(401, "Apple sign-in didn't work. Please try again.")
     user = conn.execute("SELECT id, email FROM users WHERE apple_sub=%s", (sub,)).fetchone()
     if not user and email:
-        user = conn.execute("SELECT id, email FROM users WHERE email=%s", (email,)).fetchone()
+        user = conn.execute("UPDATE users SET apple_sub=%s WHERE email=%s RETURNING id, email",
+                            (sub, email)).fetchone()
     if not user:
         if not email:
             # Apple only sends the address the first time; without it we have nothing to email
@@ -317,9 +323,10 @@ async def apple_callback(request: Request, conn=Depends(db)):
         return RedirectResponse(back + "#appleerror=expired", status_code=303)
     try:
         key = APPLE_JWKS.get_signing_key_from_jwt(id_token)
-        claims = jwt.decode(id_token, key.key, algorithms=["ES256"], audience=APPLE_SERVICES_ID,
+        claims = jwt.decode(id_token, key.key, algorithms=APPLE_ALGORITHMS, audience=APPLE_SERVICES_ID,
                             issuer="https://appleid.apple.com")
-    except Exception:
+    except Exception as e:
+        print(f"apple web sign-in rejected: {type(e).__name__}: {e}", flush=True)
         return RedirectResponse(back + "#appleerror=token", status_code=303)
     if digest(claims.get("nonce", "")) != row["nonce_hash"]:
         return RedirectResponse(back + "#appleerror=nonce", status_code=303)
