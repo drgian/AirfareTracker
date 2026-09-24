@@ -25,11 +25,34 @@ final class TripStore: ObservableObject {
     func replace(_ trip: Trip) {
         if let i = trips.firstIndex(where: { $0.id == trip.id }) { trips[i] = trip }
     }
+
+    func archive(_ trip: Trip) async {
+        do { replace(try await API.shared.archive(tripID: trip.id)) }
+        catch { problem = error.localizedDescription }
+    }
+
+    func restore(_ trip: Trip) async {
+        do { replace(try await API.shared.restore(tripID: trip.id)) }
+        catch { problem = error.localizedDescription }
+    }
+
+    func delete(_ trip: Trip) async {
+        // Drop it from the list first; the API call is the slow part and it rarely fails.
+        let previous = trips
+        trips.removeAll { $0.id == trip.id }
+        do { try await API.shared.deleteTrip(id: trip.id) }
+        catch {
+            trips = previous
+            problem = error.localizedDescription
+        }
+    }
 }
 
 struct TripsView: View {
     @StateObject private var store = TripStore()
     @State private var showingSettings = false
+    @State private var addingTrip = false
+    @State private var deleting: Trip?
 
     var body: some View {
         NavigationStack {
@@ -37,13 +60,18 @@ struct TripsView: View {
                 if store.loading {
                     ProgressView()
                 } else if store.trips.isEmpty {
-                    EmptyTrips(problem: store.problem)
+                    EmptyTrips(problem: store.problem) { addingTrip = true }
                 } else {
                     List {
                         if !store.active.isEmpty {
                             Section {
                                 ForEach(store.active) { trip in
                                     NavigationLink(value: trip) { TripRow(trip: trip) }
+                                        .swipeActions(edge: .trailing) {
+                                            Button("Delete", role: .destructive) { deleting = trip }
+                                            Button("Stop") { Task { await store.archive(trip) } }
+                                                .tint(.orange)
+                                        }
                                 }
                             }
                         }
@@ -51,6 +79,9 @@ struct TripsView: View {
                             Section("Past") {
                                 ForEach(store.past) { trip in
                                     NavigationLink(value: trip) { TripRow(trip: trip) }
+                                        .swipeActions(edge: .trailing) {
+                                            Button("Delete", role: .destructive) { deleting = trip }
+                                        }
                                 }
                             }
                         }
@@ -61,13 +92,28 @@ struct TripsView: View {
             .navigationTitle("Trips")
             .navigationDestination(for: Trip.self) { TripDetailView(trip: $0, store: store) }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button { showingSettings = true } label: {
                         Image(systemName: "person.crop.circle")
                     }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { addingTrip = true } label: { Image(systemName: "plus") }
+                }
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
+            .sheet(isPresented: $addingTrip) { AddTripView(store: store) }
+            .confirmationDialog("Delete this trip?", isPresented: .init(
+                get: { deleting != nil }, set: { if !$0 { deleting = nil } }
+            ), titleVisibility: .visible) {
+                Button("Delete", role: .destructive) {
+                    if let trip = deleting { Task { await store.delete(trip) } }
+                    deleting = nil
+                }
+                Button("Cancel", role: .cancel) { deleting = nil }
+            } message: {
+                Text("Its price history goes too, and that can't be undone.")
+            }
             .refreshable { await store.load() }
             .task { await store.load() }
             .onReceive(NotificationCenter.default.publisher(for: .refreshTrips)) { _ in
@@ -79,13 +125,16 @@ struct TripsView: View {
 
 private struct EmptyTrips: View {
     let problem: String?
+    let onAdd: () -> Void
 
     var body: some View {
         ContentUnavailableView {
             Label(problem == nil ? "No trips yet" : "Couldn't load your trips",
                   systemImage: problem == nil ? "airplane" : "exclamationmark.triangle")
         } description: {
-            Text(problem ?? "Add a trip at flightfare.io and it'll show up here, with its price history.")
+            Text(problem ?? "Track a trip and we'll check its price every day, straight from the airline.")
+        } actions: {
+            if problem == nil { Button("Add a trip") { onAdd() } }
         }
     }
 }

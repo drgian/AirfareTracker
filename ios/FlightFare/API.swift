@@ -94,6 +94,59 @@ struct Trip: Codable, Identifiable, Hashable {
     }
 }
 
+struct Cabin: Codable, Hashable, Identifiable {
+    let value: String
+    let label: String
+    var id: String { value }
+}
+
+struct Airline: Codable, Hashable, Identifiable {
+    let code: String
+    let name: String
+    let defaultCabin: String
+    let cabins: [Cabin]
+
+    var id: String { code }
+
+    enum CodingKeys: String, CodingKey {
+        case code, name, cabins
+        case defaultCabin = "default_cabin"
+    }
+}
+
+/// What the Add trip form is holding before it's good enough to send.
+struct TripDraft {
+    var origin = ""
+    var destination = ""
+    var travelDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
+    var returnDate = Calendar.current.date(byAdding: .day, value: 37, to: .now) ?? .now
+    var airline = "DL"
+    var cabin = "main_classic"
+    var flights = ""
+    var label = ""
+    var alertBelow: Int?
+
+    /// Why the form can't be submitted yet, in the same words the API would use.
+    var problem: String? {
+        if origin.isEmpty || destination.isEmpty { return "Pick both airports from the list." }
+        if origin == destination { return "The origin and destination must be different airports." }
+        if travelDate.startOfDay <= Date.now.startOfDay { return "The departure date must be in the future." }
+        if returnDate.startOfDay <= travelDate.startOfDay { return "The return date must be after the departure date." }
+        return nil
+    }
+}
+
+extension Date {
+    var apiDate: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.calendar = Calendar(identifier: .gregorian)
+        return f.string(from: self)
+    }
+
+    var startOfDay: Date { Calendar.current.startOfDay(for: self) }
+}
+
 struct Me: Codable {
     let email: String
     let role: String?
@@ -179,6 +232,42 @@ actor API {
     func setAlert(tripID: Int, below: Int?) async throws -> Trip {
         let r = try request("PATCH", "trips/\(tripID)", body: ["alert_below": below ?? 0])
         return try await send(r, as: Trip.self)
+    }
+
+    func rename(tripID: Int, to label: String) async throws -> Trip {
+        try await send(try request("PATCH", "trips/\(tripID)", body: ["label": label]), as: Trip.self)
+    }
+
+    func airlines() async throws -> [Airline] {
+        struct Out: Decodable { let airlines: [Airline] }
+        return try await send(try request("GET", "airlines"), as: Out.self).airlines
+    }
+
+    func addTrip(_ draft: TripDraft) async throws -> Trip {
+        let r = try request("POST", "trips", body: [
+            "origin": draft.origin,
+            "destination": draft.destination,
+            "travel_date": draft.travelDate.apiDate,
+            "return_date": draft.returnDate.apiDate,
+            "airline": draft.airline,
+            "cabin_class": draft.cabin,
+            "outbound_flights": draft.flights.trimmingCharacters(in: .whitespaces),
+            "label": draft.label.trimmingCharacters(in: .whitespaces),
+            "alert_below": draft.alertBelow,
+        ])
+        return try await send(r, as: Trip.self)
+    }
+
+    func archive(tripID: Int) async throws -> Trip {
+        try await send(try request("POST", "trips/\(tripID)/archive"), as: Trip.self)
+    }
+
+    func restore(tripID: Int) async throws -> Trip {
+        try await send(try request("POST", "trips/\(tripID)/restore"), as: Trip.self)
+    }
+
+    func deleteTrip(id: Int) async throws {
+        _ = try await send(try request("DELETE", "trips/\(id)"), as: Empty.self)
     }
 
     func registerDevice(token: String) async throws {
