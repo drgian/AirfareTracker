@@ -29,6 +29,23 @@ struct APIError: LocalizedError {
 
 // MARK: - What the API sends back
 
+extension KeyedDecodingContainer {
+    /// Some of these columns are text in the database and arrive quoted ("stops":"1"),
+    /// others arrive as numbers. Take either rather than failing the whole response.
+    func flexibleInt(_ key: Key) -> Int? {
+        if let n = try? decodeIfPresent(Int.self, forKey: key) { return n }
+        if let d = try? decodeIfPresent(Double.self, forKey: key) { return Int(d) }
+        if let s = try? decodeIfPresent(String.self, forKey: key) { return Int(s.trimmingCharacters(in: .whitespaces)) }
+        return nil
+    }
+
+    func flexibleDouble(_ key: Key) -> Double? {
+        if let d = try? decodeIfPresent(Double.self, forKey: key) { return d }
+        if let s = try? decodeIfPresent(String.self, forKey: key) { return Double(s.trimmingCharacters(in: .whitespaces)) }
+        return nil
+    }
+}
+
 struct PricePoint: Codable, Identifiable, Hashable {
     let scrapedAt: Date
     let price: Double
@@ -44,6 +61,16 @@ struct PricePoint: Codable, Identifiable, Hashable {
         case price, stops, flights
         case departTime = "depart_time"
         case arriveTime = "arrive_time"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        scrapedAt  = try c.decode(Date.self, forKey: .scrapedAt)
+        price      = c.flexibleDouble(.price) ?? 0
+        stops      = c.flexibleInt(.stops)
+        departTime = try c.decodeIfPresent(String.self, forKey: .departTime)
+        arriveTime = try c.decodeIfPresent(String.self, forKey: .arriveTime)
+        flights    = try c.decodeIfPresent(String.self, forKey: .flights)
     }
 }
 
@@ -217,10 +244,37 @@ actor API {
             throw APIError(status: status, message: detail ?? "Something went wrong (\(status)). Please try again.")
         }
         if T.self == Empty.self { return Empty() as! T }
-        return try decoder.decode(T.self, from: data)
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch let error as DecodingError {
+            // Say which field, not just "isn't in the correct format" — that message costs
+            // an hour every time the API grows a column.
+            print("DECODE FAILED for \(T.self): \(describe(error))")
+            print("RAW: \(String(data: data.prefix(3000), encoding: .utf8) ?? "<not text>")")
+            throw APIError(status: 0, message: describe(error))
+        }
     }
 
     struct Empty: Decodable {}
+
+    /// A decoding failure in words that name the field, so a mismatch is a one-line fix.
+    private func describe(_ error: DecodingError) -> String {
+        func path(_ context: DecodingError.Context) -> String {
+            context.codingPath.map(\.stringValue).joined(separator: ".")
+        }
+        switch error {
+        case .keyNotFound(let key, let c):
+            return "missing field \"\(key.stringValue)\" at \(path(c))"
+        case .typeMismatch(let type, let c):
+            return "field \(path(c)) isn't a \(type)"
+        case .valueNotFound(let type, let c):
+            return "field \(path(c)) was null but we need a \(type)"
+        case .dataCorrupted(let c):
+            return "bad value at \(path(c)): \(c.debugDescription)"
+        @unknown default:
+            return error.localizedDescription
+        }
+    }
 
     // MARK: Calls the app makes
 
