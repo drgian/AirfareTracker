@@ -106,16 +106,6 @@ struct ResearchView: View {
             }
         }
 
-        if a.byTimeOfDay.contains(where: { $0.relative != nil }) {
-            Section {
-                RelativeBars(slices: a.byTimeOfDay)
-                    .frame(height: CGFloat(a.byTimeOfDay.count) * 30 + 30)
-                    .padding(.vertical, 6)
-            } header: {
-                Text("Time of day")
-            }
-        }
-
         Section {
             let c = a.changes
             StatRow("Checks compared", "\(c.pairs)",

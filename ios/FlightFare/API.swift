@@ -303,15 +303,16 @@ struct Analysis: Decodable {
     let usable: Int
     let since: String?
     let byWeekday: [AnalysisSlice]
-    let byTimeOfDay: [AnalysisSlice]
     let byDaysAhead: [AnalysisSlice]
     let changes: AnalysisChanges
 
     private static let weekdays = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-    enum Top: String, CodingKey { case summary, by_dow, by_time, by_days_out, changes }
+    // by_time is deliberately ignored: prices are checked twice a day, which is nowhere
+    // near often enough for "morning vs evening" to mean anything.
+    enum Top: String, CodingKey { case summary, by_dow, by_days_out, changes }
     enum Summary: String, CodingKey { case checks, routes, usable, since }
-    enum Slice: String, CodingKey { case dow, slot, label, rel, sd, n }
+    enum Slice: String, CodingKey { case dow, label, rel, sd, n }
 
     init(from decoder: Decoder) throws {
         let top = try decoder.container(keyedBy: Top.self)
@@ -322,8 +323,8 @@ struct Analysis: Decodable {
         since  = try s.decodeIfPresent(String.self, forKey: .since)
         changes = try top.decode(AnalysisChanges.self, forKey: .changes)
 
-        // The three groupings name their bucket differently: a weekday number, a slot name,
-        // or a ready-made label. Read whichever is there.
+        // The two groupings name their bucket differently: a weekday number, or a
+        // ready-made label. Read whichever is there.
         func slices(_ key: Top) throws -> [AnalysisSlice] {
             var list = try top.nestedUnkeyedContainer(forKey: key)
             var out: [AnalysisSlice] = []
@@ -332,8 +333,6 @@ struct Analysis: Decodable {
                 let name: String
                 if let dow = c.flexibleInt(.dow) {
                     name = Self.weekdays[min(max(dow, 1), 7)]
-                } else if let slot = try c.decodeIfPresent(String.self, forKey: .slot) {
-                    name = slot
                 } else {
                     name = (try c.decodeIfPresent(String.self, forKey: .label)) ?? "?"
                 }
@@ -343,7 +342,6 @@ struct Analysis: Decodable {
             return out
         }
         byWeekday   = try slices(.by_dow)
-        byTimeOfDay = try slices(.by_time)
         byDaysAhead = try slices(.by_days_out)
     }
 }
