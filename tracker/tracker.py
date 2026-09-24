@@ -7,6 +7,10 @@ try:
     import jwt              # only needed for push notifications
 except ImportError:
     jwt = None
+try:
+    import httpx            # APNs is HTTP/2 only, and Windows' bundled curl isn't
+except ImportError:
+    httpx = None
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
@@ -802,31 +806,33 @@ def send_push(cfg, conn, user_ids, title, body, thread=None):
     if not token:
         print("  push: no APNs key on this machine, skipping")
         return 0
+    if httpx is None:
+        print("  push: httpx isn't installed, skipping")
+        return 0
     rows = conn.execute("SELECT id, token, environment FROM devices WHERE user_id = ANY(%s) AND failed_at IS NULL",
                         (list(user_ids),)).fetchall()
+    payload = {"aps": {"alert": {"title": title, "body": body}, "sound": "default",
+                       "thread-id": thread or "flightfare"}}
+    headers = {"authorization": f"bearer {token}",
+               "apns-topic": cfg.get("apple_bundle_id", "io.flightfare.app"),
+               "apns-push-type": "alert", "apns-priority": "10"}
     sent = 0
-    for d in rows:
-        payload = json.dumps({"aps": {"alert": {"title": title, "body": body}, "sound": "default",
-                                      "thread-id": thread or "flightfare"}})
-        url = f"https://{APNS_HOSTS.get(d['environment'], APNS_HOSTS['production'])}/3/device/{d['token']}"
-        try:
-            out = subprocess.run(
-                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--http2", "-X", "POST",
-                 "-H", f"authorization: bearer {token}",
-                 "-H", f"apns-topic: {cfg.get('apple_bundle_id', 'io.flightfare.app')}",
-                 "-H", "apns-push-type: alert", "-H", "apns-priority: 10",
-                 "-d", payload, url, "--max-time", "20"],
-                capture_output=True, text=True).stdout.strip()
-        except Exception as e:
-            print(f"  push failed: {e}")
-            continue
-        if out == "200":
-            sent += 1
-        elif out in ("410", "400"):     # the phone uninstalled the app or the token is bad
-            conn.execute("UPDATE devices SET failed_at=%s WHERE id=%s", (utcnow(), d["id"]))
-            print(f"  push: device no longer reachable ({out}), retired it")
-        else:
-            print(f"  push: Apple said {out}")
+    with httpx.Client(http2=True, timeout=20) as client:
+        for d in rows:
+            host = APNS_HOSTS.get(d["environment"], APNS_HOSTS["production"])
+            try:
+                res = client.post(f"https://{host}/3/device/{d['token']}", json=payload, headers=headers)
+            except Exception as e:
+                print(f"  push failed: {e}")
+                continue
+            if res.status_code == 200:
+                sent += 1
+            elif res.status_code in (400, 410):   # uninstalled, or a token that was never valid
+                reason = (res.json() or {}).get("reason", res.status_code)
+                conn.execute("UPDATE devices SET failed_at=%s WHERE id=%s", (utcnow(), d["id"]))
+                print(f"  push: retired an unreachable device ({reason})")
+            else:
+                print(f"  push: Apple said {res.status_code} {res.text[:120]}")
     if sent:
         print(f"  pushed to {sent} device(s)")
     return sent
