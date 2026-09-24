@@ -1,0 +1,33 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1561 1502" width="1561" height="1502">
+	<title>Southwest_Airlines_logo_2014-svg</title>
+	<defs>
+		<linearGradient id="g1" x1="43.1" y1="913.1" x2="1074.1" y2="913.1" gradientUnits="userSpaceOnUse">
+			<stop offset="0" stop-color="#3656cc"/>
+			<stop offset=".4" stop-color="#304cb2"/>
+			<stop offset=".7" stop-color="#283b80"/>
+		</linearGradient>
+		<linearGradient id="g2" x1="189.6" y1="98.6" x2="1354.3" y2="914.1" gradientUnits="userSpaceOnUse">
+			<stop offset=".3" stop-color="#e61c23"/>
+			<stop offset=".8" stop-color="#c3161c"/>
+		</linearGradient>
+		<linearGradient id="g3" x1="911.6" y1="-6.9" x2="1577.5" y2="459.4" gradientUnits="userSpaceOnUse">
+			<stop offset="0" stop-color="#fdbc11"/>
+			<stop offset=".3" stop-color="#fcb415"/>
+			<stop offset=".8" stop-color="#f89e1c"/>
+		</linearGradient>
+	</defs>
+	<style>
+		.s0 { fill: #cccccc } 
+		.s1 { fill: url(#g1) } 
+		.s2 { fill: url(#g2) } 
+		.s3 { fill: url(#g3) } 
+	</style>
+	<g id="Layer">
+		<g id="Layer">
+			<path id="Layer" class="s0" d="m1561 480.8c0 373.5-353.5 733.8-780.4 1020.6-426.9-293.5-780.4-653.7-780.4-1020.6 0-306.9 173.4-480.3 446.9-480.3 140 0 246.8 46.7 333.5 93.4 86.7-46.7 200.1-93.4 333.5-93.4 266.8 0 446.9 173.4 446.9 480.3z"/>
+			<path id="Layer" class="s1" d="m46.9 387.4c146.7 120.1 573.6 460.3 1020.5 833.8-93.4 80.1-193.4 160.1-293.5 226.8-333.5-233.4-733.7-587-733.7-960.5 0-40.1 6.7-73.4 6.7-100.1z"/>
+			<path id="Layer" class="s2" d="m1147.4 1147.9c-460.2-366.9-920.4-693.8-1087.2-813.9 13.3-73.4 46.7-133.4 93.4-180.1 73.4-73.4 180.1-113.4 300.1-113.4 126.8 0 240.2 53.4 300.2 86.7 213.4 126.8 406.9 266.9 733.7 533.7-60 173.4-186.8 340.2-340.2 487z"/>
+			<path id="Layer" class="s3" d="m1507.6 474.1c0 26.7 0 60-6.7 86.7-286.8-213.4-560.2-366.9-687-440.2 73.4-40.1 166.8-80.1 293.5-80.1 120.1 0 220.1 40 293.5 113.4 73.4 73.4 113.4 186.8 106.7 320.2z"/>
+		</g>
+	</g>
+</svg>

@@ -28,7 +28,15 @@ struct TripDetailView: View {
                 Detail("Route", "\(trip.origin) → \(trip.destination)")
                 Detail("Out", trip.travelDate.prettyDate)
                 if let back = trip.returnDate { Detail("Back", back.prettyDate) }
-                if let airline = trip.airline { Detail("Airline", airline) }
+                if let airline = trip.airline {
+                    HStack {
+                        Text("Airline").foregroundStyle(.secondary)
+                        Spacer()
+                        AirlineLogo(code: airline, size: 24)
+                        Text(AirlineNames.full(airline))
+                    }
+                    .font(.subheadline)
+                }
                 if let latest = trip.latest {
                     if let stops = latest.stops {
                         Detail("Stops", stops == 0 ? "Nonstop" : "\(stops)")

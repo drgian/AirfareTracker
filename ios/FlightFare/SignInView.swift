@@ -27,7 +27,7 @@ struct SignInView: View {
             } onCompletion: { result in
                 handle(result)
             }
-            .signInWithAppleButtonStyle(.black)
+            .signInWithAppleButtonStyle(.white)   // the app runs dark; a black button would vanish
             .frame(height: 50)
             .disabled(working)
             .opacity(working ? 0.5 : 1)

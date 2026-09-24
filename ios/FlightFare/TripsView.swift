@@ -143,7 +143,8 @@ struct TripRow: View {
     let trip: Trip
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .center, spacing: 12) {
+            AirlineLogo(code: trip.airline ?? "DL")
             VStack(alignment: .leading, spacing: 3) {
                 Text(trip.name).font(.body.weight(.medium))
                 Text(subtitle)
@@ -170,7 +171,6 @@ struct TripRow: View {
         var bits = [trip.travelDate.prettyDate]
         if let back = trip.returnDate { bits.append(back.prettyDate) }
         var line = bits.joined(separator: " – ")
-        if let airline = trip.airline { line = "\(airline)  \(line)" }
         if trip.isBelowTarget { line += "  ·  below your target" }
         return line
     }

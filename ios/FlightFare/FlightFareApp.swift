@@ -17,6 +17,7 @@ struct FlightFareApp: App {
             }
             .environmentObject(session)
             .tint(.accentColor)
+            .preferredColorScheme(.dark)
         }
     }
 }
