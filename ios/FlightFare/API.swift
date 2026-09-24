@@ -474,8 +474,9 @@ actor API {
         try await send(try request("GET", "analysis", query: ["scope": scope]), as: Analysis.self)
     }
 
-    func researchRoutes() async throws -> [ResearchRoute] {
-        try await send(try request("GET", "research/routes"), as: [ResearchRoute].self)
+    func researchRoutes(scope: String = "all") async throws -> [ResearchRoute] {
+        try await send(try request("GET", "research/routes", query: ["scope": scope]),
+                       as: [ResearchRoute].self)
     }
 
     func researchData(routeID: Int) async throws -> ResearchData {

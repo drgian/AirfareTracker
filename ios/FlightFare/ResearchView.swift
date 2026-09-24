@@ -14,7 +14,7 @@ final class ResearchStore: ObservableObject {
         defer { loading = false }
         // Kept separate on purpose: when the two were assigned together, an analysis
         // failure also blanked the list of routes that had loaded perfectly well.
-        async let fetchedRoutes = API.shared.researchRoutes()
+        async let fetchedRoutes = API.shared.researchRoutes(scope: scope)
         async let fetchedAnalysis = API.shared.analysis(scope: scope)
 
         var trouble: String?
@@ -90,7 +90,7 @@ struct ResearchView: View {
             } header: {
                 Text("How far ahead you book")
             } footer: {
-                Text("Green is cheaper than that trip's average, red is dearer. This is the one worth acting on.")
+                Text("Green is cheaper than that trip's average, red is dearer. Research ladders count here too - each weekly rung is its own trip, priced over and over as it approaches.")
             }
         }
 

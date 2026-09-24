@@ -674,10 +674,23 @@ WITH trips AS (
     SELECT DISTINCT ON (route_id) route_id, origin, destination, travel_date FROM user_trips ORDER BY route_id, id
 ), p AS (
     SELECT ph.trip_id AS route_id, ph.price_usd AS price, ph.scraped_at, t.travel_date, t.origin, t.destination,
-           (ph.scraped_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York' AS local_ts
+           (ph.scraped_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York' AS local_ts,
+           false AS from_research
     FROM price_history ph JOIN trips t ON t.route_id = ph.trip_id
     WHERE ph.price_usd IS NOT NULL AND NOT ph.synthetic
       AND (%(scope)s = 'all' OR ph.trip_id IN (SELECT route_id FROM user_trips WHERE user_id = %(uid)s))
+    UNION ALL
+    -- Each rung of a research ladder is its own trip: one fixed departure date, priced over
+    -- and over as it approaches. That is the same shape as a tracked trip, so it belongs in
+    -- the same comparison - and it is far better spread across the booking window.
+    SELECT 'research-' || rp.route_id || '-' || rp.departure_date AS route_id,
+           rp.price_usd, COALESCE(rp.scraped_at, rp.observed_on::timestamp), rp.departure_date,
+           rr.origin, rr.destination,
+           (COALESCE(rp.scraped_at, rp.observed_on::timestamp) AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York',
+           true
+    FROM research_prices rp JOIN research_routes rr ON rr.id = rp.route_id
+    WHERE rp.price_usd IS NOT NULL
+      AND (%(scope)s = 'all' OR rr.user_id = %(uid)s)
 ), r AS (
     SELECT route_id, avg(price) AS mean FROM p GROUP BY route_id HAVING count(*) >= 3
 ), rel AS (
@@ -711,7 +724,8 @@ def analysis(scope: str = "all", user=Depends(research_user), conn=Depends(db)):
                 "MIN(price - prev) AS biggest_drop, MAX(price - prev) AS biggest_rise FROM pairs")[0]
     routes = q("SELECT origin, destination, travel_date, COUNT(*) AS checks, MIN(price) AS low, MAX(price) AS high, "
                "(ARRAY_AGG(price ORDER BY scraped_at DESC))[1] AS latest, COALESCE(STDDEV_SAMP(price) / AVG(price), 0) AS volatility "
-               "FROM p GROUP BY route_id, origin, destination, travel_date ORDER BY checks DESC, origin")
+               "FROM p WHERE NOT from_research GROUP BY route_id, origin, destination, travel_date "
+               "ORDER BY checks DESC, origin")
     summary["since"] = summary["since"].isoformat() if summary["since"] else None
     for r in routes:
         r["travel_date"] = r["travel_date"].isoformat()
@@ -750,10 +764,14 @@ def research_out(conn, r):
     return r
 
 @app.get("/research/routes")
-def research_routes(user=Depends(research_user), conn=Depends(db)):
+def research_routes(scope: str = "all", user=Depends(research_user), conn=Depends(db)):
+    if scope not in ("all", "mine"):
+        raise HTTPException(400, "Scope must be all or mine.")
+    # Admins see everyone's unless they ask for just their own; nobody else ever sees another's
+    everyones = user["is_admin"] and scope == "all"
     rows = conn.execute(
         "SELECT r.* FROM research_routes r WHERE %s OR r.user_id=%s ORDER BY r.id",
-        (user["is_admin"], user["id"])).fetchall()
+        (everyones, user["id"])).fetchall()
     return [research_out(conn, r) for r in rows]
 
 @app.post("/research/routes", status_code=201)
