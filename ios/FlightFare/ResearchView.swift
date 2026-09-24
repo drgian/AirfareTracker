@@ -4,14 +4,18 @@ import Charts
 @MainActor
 final class ResearchStore: ObservableObject {
     @Published var routes: [ResearchRoute] = []
+    @Published var analysis: Analysis?
     @Published var problem: String?
     @Published var loading = false
+    @Published var scope = "all"
 
     func load() async {
-        loading = routes.isEmpty
+        loading = routes.isEmpty && analysis == nil
         defer { loading = false }
         do {
-            routes = try await API.shared.researchRoutes()
+            async let routes = API.shared.researchRoutes()
+            async let analysis = API.shared.analysis(scope: scope)
+            (self.routes, self.analysis) = try await (routes, analysis)
             problem = nil
         } catch let error as APIError where error.isUnauthorized {
             Session.shared.end()
@@ -23,30 +27,172 @@ final class ResearchStore: ObservableObject {
 
 struct ResearchView: View {
     @StateObject private var store = ResearchStore()
+    @EnvironmentObject private var session: Session
 
     var body: some View {
         NavigationStack {
             Group {
                 if store.loading {
                     ProgressView()
-                } else if store.routes.isEmpty {
-                    ContentUnavailableView {
-                        Label(store.problem == nil ? "Nothing being studied" : "Couldn't load",
-                              systemImage: store.problem == nil ? "chart.xyaxis.line" : "exclamationmark.triangle")
-                    } description: {
-                        Text(store.problem ?? "Set a route up at flightfare.io and we'll price the same trip every week, six months out.")
-                    }
                 } else {
-                    List(store.routes) { route in
-                        NavigationLink(value: route) { ResearchRow(route: route) }
+                    List {
+                        if let problem = store.problem {
+                            Section { Text(problem).font(.footnote).foregroundStyle(.red) }
+                        }
+                        if let a = store.analysis, a.usable > 0 {
+                            analysisSections(a)
+                        }
+                        routesSection
                     }
                 }
             }
             .navigationTitle("Research")
+            .toolbar {
+                if session.role == "admin" {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Picker("Scope", selection: $store.scope) {
+                            Text("Everyone").tag("all")
+                            Text("Mine").tag("mine")
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+            }
             .navigationDestination(for: ResearchRoute.self) { ResearchDetailView(route: $0) }
             .refreshable { await store.load() }
             .task { await store.load() }
+            .onChange(of: store.scope) { _, _ in Task { await store.load() } }
         }
+    }
+
+    @ViewBuilder
+    private func analysisSections(_ a: Analysis) -> some View {
+        Section {
+            StatRow("Prices recorded", "\(a.checks)",
+                    detail: a.since.map { "since \($0.prettyDate)" })
+            StatRow("Trips compared", "\(a.routes)", detail: nil)
+        } header: {
+            Text("What we have collected")
+        } footer: {
+            Text("Every bar below compares a price with that same trip's own average, so a cheap short hop and an expensive long haul can sit in the same chart.")
+        }
+
+        if a.byDaysAhead.contains(where: { $0.relative != nil }) {
+            Section {
+                RelativeBars(slices: a.byDaysAhead)
+                    .frame(height: CGFloat(a.byDaysAhead.count) * 30 + 30)
+                    .padding(.vertical, 6)
+            } header: {
+                Text("How far ahead you book")
+            } footer: {
+                Text("Green is cheaper than that trip's average, red is dearer. This is the one worth acting on.")
+            }
+        }
+
+        if a.byWeekday.contains(where: { $0.relative != nil }) {
+            Section {
+                RelativeBars(slices: a.byWeekday)
+                    .frame(height: CGFloat(a.byWeekday.count) * 30 + 30)
+                    .padding(.vertical, 6)
+            } header: {
+                Text("Day of the week")
+            } footer: {
+                Text("Whether the day you look changes the price. Bars from fewer than ten checks are faded - there isn't enough there to trust yet.")
+            }
+        }
+
+        if a.byTimeOfDay.contains(where: { $0.relative != nil }) {
+            Section {
+                RelativeBars(slices: a.byTimeOfDay)
+                    .frame(height: CGFloat(a.byTimeOfDay.count) * 30 + 30)
+                    .padding(.vertical, 6)
+            } header: {
+                Text("Time of day")
+            }
+        }
+
+        Section {
+            let c = a.changes
+            StatRow("Checks compared", "\(c.pairs)",
+                    detail: c.pairs > 0 ? "\(Int(c.steadyShare * 100))% unchanged" : nil)
+            StatRow("Moved up", "\(c.ups)", detail: nil)
+            StatRow("Moved down", "\(c.downs)", detail: nil)
+            if let move = c.averageMove, let pct = c.averageMovePercent {
+                StatRow("Typical move", "$\(Int(move))", detail: "\(String(format: "%.1f", pct * 100))%")
+            }
+            if let drop = c.biggestDrop, drop < 0 {
+                StatRow("Biggest fall", "$\(Int(abs(drop)))", detail: nil)
+            }
+            if let rise = c.biggestRise, rise > 0 {
+                StatRow("Biggest jump", "$\(Int(rise))", detail: nil)
+            }
+        } header: {
+            Text("How often prices actually move")
+        }
+    }
+
+    @ViewBuilder
+    private var routesSection: some View {
+        Section {
+            if store.routes.isEmpty {
+                Text("Set a route up at flightfare.io and we'll price the same trip every week, six months out.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.routes) { route in
+                    NavigationLink(value: route) { ResearchRow(route: route) }
+                }
+            }
+        } header: {
+            Text("Routes being studied")
+        }
+    }
+}
+
+/// Above or below that trip's own average, so zero is the meaningful middle: one hue each
+/// side and a neutral line between. Cheaper is green because cheaper is the good direction,
+/// which is the same way the trip list reads a price fall.
+private struct RelativeBars: View {
+    let slices: [AnalysisSlice]
+
+    var body: some View {
+        Chart(slices) { slice in
+            if let rel = slice.relative {
+                BarMark(
+                    xStart: .value("From", 0),
+                    xEnd: .value("Difference", rel),
+                    y: .value("Group", slice.label)
+                )
+                .foregroundStyle(rel <= 0 ? Color.green : Color.red)
+                .opacity(slice.thin ? 0.35 : 0.9)
+                .cornerRadius(3)
+                .annotation(position: rel <= 0 ? .trailing : .leading, spacing: 5) {
+                    Text(rel.asSignedPercent)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .chartXAxis {
+            AxisMarks { value in
+                AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
+                AxisValueLabel {
+                    if let d = value.as(Double.self) {
+                        Text(d.asSignedPercent).font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks { AxisValueLabel().font(.caption2).foregroundStyle(.secondary) }
+        }
+    }
+}
+
+extension Double {
+    /// 0.032 -> "+3.2%"
+    var asSignedPercent: String {
+        String(format: "%+.1f%%", self * 100)
     }
 }
 

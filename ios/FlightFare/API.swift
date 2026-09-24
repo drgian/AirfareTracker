@@ -246,6 +246,108 @@ struct ResearchData: Codable {
     let prices: [ResearchPoint]
 }
 
+// MARK: - Analysis: patterns across every price we have ever recorded
+
+/// A slice of the data - one weekday, one time of day, one booking window - and how its
+/// prices compare with the average for the same trip. `relative` is a fraction: -0.03 means
+/// three percent below that route's own average, which is the only fair way to compare a
+/// $300 hop with a $1,500 long haul.
+struct AnalysisSlice: Codable, Identifiable, Hashable {
+    let label: String
+    let relative: Double?
+    let spread: Double?
+    let count: Int
+
+    var id: String { label }
+
+    /// Too little data to mean anything. Drawn faintly rather than hidden, so the gap shows.
+    var thin: Bool { count < 10 }
+}
+
+struct AnalysisChanges: Codable, Hashable {
+    let pairs: Int
+    let changed: Int
+    let ups: Int
+    let downs: Int
+    let averageMove: Double?
+    let averageMovePercent: Double?
+    let biggestDrop: Double?
+    let biggestRise: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case pairs, changed, ups, downs
+        case averageMove = "avg_move"
+        case averageMovePercent = "avg_move_pct"
+        case biggestDrop = "biggest_drop"
+        case biggestRise = "biggest_rise"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pairs   = c.flexibleInt(.pairs) ?? 0
+        changed = c.flexibleInt(.changed) ?? 0
+        ups     = c.flexibleInt(.ups) ?? 0
+        downs   = c.flexibleInt(.downs) ?? 0
+        averageMove        = c.flexibleDouble(.averageMove)
+        averageMovePercent = c.flexibleDouble(.averageMovePercent)
+        biggestDrop        = c.flexibleDouble(.biggestDrop)
+        biggestRise        = c.flexibleDouble(.biggestRise)
+    }
+
+    var steadyShare: Double { pairs == 0 ? 0 : Double(pairs - changed) / Double(pairs) }
+}
+
+struct Analysis: Decodable {
+    let checks: Int
+    let routes: Int
+    let usable: Int
+    let since: String?
+    let byWeekday: [AnalysisSlice]
+    let byTimeOfDay: [AnalysisSlice]
+    let byDaysAhead: [AnalysisSlice]
+    let changes: AnalysisChanges
+
+    private static let weekdays = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    enum Top: String, CodingKey { case summary, by_dow, by_time, by_days_out, changes }
+    enum Summary: String, CodingKey { case checks, routes, usable, since }
+    enum Slice: String, CodingKey { case dow, slot, label, rel, sd, n }
+
+    init(from decoder: Decoder) throws {
+        let top = try decoder.container(keyedBy: Top.self)
+        let s = try top.nestedContainer(keyedBy: Summary.self, forKey: .summary)
+        checks = s.flexibleInt(.checks) ?? 0
+        routes = s.flexibleInt(.routes) ?? 0
+        usable = s.flexibleInt(.usable) ?? 0
+        since  = try s.decodeIfPresent(String.self, forKey: .since)
+        changes = try top.decode(AnalysisChanges.self, forKey: .changes)
+
+        // The three groupings name their bucket differently: a weekday number, a slot name,
+        // or a ready-made label. Read whichever is there.
+        func slices(_ key: Top) throws -> [AnalysisSlice] {
+            var list = try top.nestedUnkeyedContainer(forKey: key)
+            var out: [AnalysisSlice] = []
+            while !list.isAtEnd {
+                let c = try list.nestedContainer(keyedBy: Slice.self)
+                let name: String
+                if let dow = c.flexibleInt(.dow) {
+                    name = Self.weekdays[min(max(dow, 1), 7)]
+                } else if let slot = try c.decodeIfPresent(String.self, forKey: .slot) {
+                    name = slot
+                } else {
+                    name = (try c.decodeIfPresent(String.self, forKey: .label)) ?? "?"
+                }
+                out.append(AnalysisSlice(label: name, relative: c.flexibleDouble(.rel),
+                                         spread: c.flexibleDouble(.sd), count: c.flexibleInt(.n) ?? 0))
+            }
+            return out
+        }
+        byWeekday   = try slices(.by_dow)
+        byTimeOfDay = try slices(.by_time)
+        byDaysAhead = try slices(.by_days_out)
+    }
+}
+
 struct Me: Codable {
     let email: String
     let role: String?
@@ -358,6 +460,10 @@ actor API {
 
     func me() async throws -> Me {
         try await send(try request("GET", "me"), as: Me.self)
+    }
+
+    func analysis(scope: String = "all") async throws -> Analysis {
+        try await send(try request("GET", "analysis?scope=\(scope)"), as: Analysis.self)
     }
 
     func researchRoutes() async throws -> [ResearchRoute] {
