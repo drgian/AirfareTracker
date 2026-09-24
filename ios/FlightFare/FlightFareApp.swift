@@ -10,7 +10,7 @@ struct FlightFareApp: App {
         WindowGroup {
             Group {
                 if session.isSignedIn {
-                    TripsView()
+                    RootTabs()
                 } else {
                     SignInView()
                 }
@@ -18,6 +18,28 @@ struct FlightFareApp: App {
             .environmentObject(session)
             .tint(.accentColor)
             .preferredColorScheme(.dark)
+        }
+    }
+}
+
+/// Trips, and - for researchers and admins - the routes being studied. Admin itself
+/// deliberately stays on the website: an app that shows other people's accounts invites
+/// questions at review time, and it isn't something you need on a phone.
+struct RootTabs: View {
+    @EnvironmentObject private var session: Session
+
+    var body: some View {
+        TabView {
+            TripsView()
+                .tabItem { Label("Trips", systemImage: "airplane") }
+            if session.canResearch {
+                ResearchView()
+                    .tabItem { Label("Research", systemImage: "chart.xyaxis.line") }
+            }
+        }
+        // The role may have changed since last launch, and it decides whether the tab is there
+        .task {
+            if let me = try? await API.shared.me() { session.remember(me) }
         }
     }
 }

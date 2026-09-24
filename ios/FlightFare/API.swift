@@ -1,13 +1,18 @@
 import Foundation
 
-// Debug builds talk to the dev API, which is the one that gets new code first.
-// Release builds talk to the live one. Nothing else in the app knows the difference.
+// Both builds talk to the live API. Dev would be the safer choice, but nothing checks
+// prices there - its newest price is from 16 September - so a trip added against dev sits
+// at "Checking..." for ever and the app looks broken. Point this back at /dev the day
+// something services that queue.
+//
+// Notifications still follow the build, and must: a debug build's device token is only
+// valid against Apple's sandbox gateway, a release build's only against production.
 enum Env {
+    static let apiBase = URL(string: "https://api.flightfare.io")!
+
     #if DEBUG
-    static let apiBase = URL(string: "https://api.flightfare.io/dev")!
     static let apnsEnvironment = "sandbox"
     #else
-    static let apiBase = URL(string: "https://api.flightfare.io")!
     static let apnsEnvironment = "production"
     #endif
 
@@ -174,6 +179,73 @@ extension Date {
     var startOfDay: Date { Calendar.current.startOfDay(for: self) }
 }
 
+/// A route we price every week out to six months, to learn how booking early pays off.
+struct ResearchRoute: Codable, Identifiable, Hashable {
+    let id: Int
+    let label: String
+    let origin: String
+    let destination: String
+    let airline: String
+    let nights: Int
+    let weekday: Int
+    let weeks: Int
+    let observations: Int
+    let priced: Int
+    let lowest: Double?
+    let highest: Double?
+    let lastDay: String?
+    let waiting: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, label, origin, destination, airline, nights, weekday, weeks
+        case observations, priced, lowest, highest, waiting
+        case lastDay = "last_day"
+    }
+
+    static let weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    var departsOn: String { Self.weekdayNames[min(max(weekday, 0), 6)] }
+    var summary: String { "\(departsOn)s · \(nights) nights · \(weeks) weeks out" }
+}
+
+/// One observation: what this trip cost on one day, booked this far ahead.
+struct ResearchPoint: Codable, Identifiable, Hashable {
+    let observedOn: String
+    let departureDate: String
+    let daysOut: Int
+    let price: Double?
+    let status: String?
+    let oil: Double?
+    let flights: String?
+
+    var id: String { observedOn + departureDate }
+
+    enum CodingKeys: String, CodingKey {
+        case status, flights
+        case observedOn = "observed_on"
+        case departureDate = "departure_date"
+        case daysOut = "days_out"
+        case price = "price_usd"
+        case oil = "oil_usd"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        observedOn    = try c.decode(String.self, forKey: .observedOn)
+        departureDate = try c.decode(String.self, forKey: .departureDate)
+        daysOut       = c.flexibleInt(.daysOut) ?? 0
+        price         = c.flexibleDouble(.price)
+        oil           = c.flexibleDouble(.oil)
+        status        = try c.decodeIfPresent(String.self, forKey: .status)
+        flights       = try c.decodeIfPresent(String.self, forKey: .flights)
+    }
+}
+
+struct ResearchData: Codable {
+    let route: ResearchRoute
+    let prices: [ResearchPoint]
+}
+
 struct Me: Codable {
     let email: String
     let role: String?
@@ -286,6 +358,14 @@ actor API {
 
     func me() async throws -> Me {
         try await send(try request("GET", "me"), as: Me.self)
+    }
+
+    func researchRoutes() async throws -> [ResearchRoute] {
+        try await send(try request("GET", "research/routes"), as: [ResearchRoute].self)
+    }
+
+    func researchData(routeID: Int) async throws -> ResearchData {
+        try await send(try request("GET", "research/routes/\(routeID)/data"), as: ResearchData.self)
     }
 
     func trips() async throws -> [Trip] {

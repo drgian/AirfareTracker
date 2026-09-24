@@ -71,7 +71,7 @@ struct SignInView: View {
                     let token = try await API.shared.signInWithApple(identityToken: identityToken)
                     await MainActor.run { session.begin(token: token) }
                     if let me = try? await API.shared.me() {
-                        await MainActor.run { session.remember(email: me.email) }
+                        await MainActor.run { session.remember(me) }
                     }
                     await AppDelegate.askAndRegister()
                 } catch {

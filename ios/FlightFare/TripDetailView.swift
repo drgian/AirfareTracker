@@ -141,17 +141,37 @@ private struct PriceHeadline: View {
     }
 }
 
-/// One series, so no legend — the section title names it. The newest point is labelled
-/// directly; the rest are readable by dragging along the line.
+/// One series, so no legend - the section title names it.
+///
+/// Two checks a few hours apart (a re-check soon after a scheduled one) make a smooth line
+/// kink hard enough to look broken, so only the later of a close pair is drawn. The lowest
+/// and highest are always kept, since those are the points worth seeing. Same rule the
+/// website uses, so the two charts agree.
 private struct PriceChart: View {
     let history: [PricePoint]
     let target: Int?
 
     @State private var selected: PricePoint?
 
+    private static let closeEnough: TimeInterval = 6 * 3600
+
+    private var points: [PricePoint] {
+        guard history.count > 2,
+              let low = history.min(by: { $0.price < $1.price })?.price,
+              let high = history.max(by: { $0.price < $1.price })?.price else { return history }
+        return history.enumerated().filter { i, p in
+            i == history.count - 1
+                || history[i + 1].scrapedAt.timeIntervalSince(p.scrapedAt) >= Self.closeEnough
+                || p.price == low || p.price == high
+        }.map(\.element)
+    }
+
+    private var lowest: PricePoint? { points.min(by: { $0.price < $1.price }) }
+    private var highest: PricePoint? { points.max(by: { $0.price < $1.price }) }
+
     var body: some View {
         Chart {
-            ForEach(history) { point in
+            ForEach(points) { point in
                 LineMark(x: .value("Date", point.scrapedAt), y: .value("Price", point.price))
                     .interpolationMethod(.monotone)
                     .lineStyle(StrokeStyle(lineWidth: 2))
@@ -160,22 +180,36 @@ private struct PriceChart: View {
             if let target {
                 RuleMark(y: .value("Target", target))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .foregroundStyle(.secondary.opacity(0.6))
-                    .annotation(position: .top, alignment: .leading) {
+                    .foregroundStyle(.secondary.opacity(0.5))
+                    .annotation(position: .bottom, alignment: .leading, spacing: 2) {
                         Text("target $\(target)").font(.caption2).foregroundStyle(.secondary)
                     }
             }
-            if let point = selected ?? history.last {
+            // The cheapest and dearest checks are the two worth picking out
+            if let lowest, points.count > 1 {
+                PointMark(x: .value("Date", lowest.scrapedAt), y: .value("Price", lowest.price))
+                    .symbolSize(70).foregroundStyle(Color.green)
+            }
+            if let highest, points.count > 1, highest.price != lowest?.price {
+                PointMark(x: .value("Date", highest.scrapedAt), y: .value("Price", highest.price))
+                    .symbolSize(70).foregroundStyle(Color.red)
+            }
+            // Only while a finger is down: the headline above already states the latest price,
+            // so a permanent label here just sits in the way.
+            if let point = selected {
+                RuleMark(x: .value("Date", point.scrapedAt))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .foregroundStyle(.secondary.opacity(0.4))
                 PointMark(x: .value("Date", point.scrapedAt), y: .value("Price", point.price))
-                    .symbolSize(90)
+                    .symbolSize(110)
                     .foregroundStyle(.tint)
-                    .annotation(position: .top, spacing: 6, overflowResolution: .init(x: .fit, y: .disabled)) {
+                    .annotation(position: .top, spacing: 6,
+                                overflowResolution: .init(x: .fit, y: .disabled)) {
                         VStack(spacing: 1) {
                             Text(point.price, format: .currency(code: "USD").precision(.fractionLength(0)))
                                 .font(.caption.weight(.semibold).monospacedDigit())
                             Text(point.scrapedAt.formatted(.dateTime.day().month(.abbreviated)))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .font(.caption2).foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 7).padding(.vertical, 4)
                         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
@@ -196,8 +230,7 @@ private struct PriceChart: View {
         .chartXAxis {
             AxisMarks(preset: .aligned) { _ in
                 AxisValueLabel(format: .dateTime.day().month(.abbreviated))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.caption2).foregroundStyle(.secondary)
             }
         }
         .chartOverlay { proxy in
@@ -209,7 +242,7 @@ private struct PriceChart: View {
                                 guard let plot = proxy.plotFrame else { return }
                                 let x = drag.location.x - geo[plot].origin.x
                                 guard let date: Date = proxy.value(atX: x) else { return }
-                                selected = history.min {
+                                selected = points.min {
                                     abs($0.scrapedAt.timeIntervalSince(date)) < abs($1.scrapedAt.timeIntervalSince(date))
                                 }
                             }

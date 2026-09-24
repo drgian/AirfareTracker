@@ -11,10 +11,12 @@ final class Session: ObservableObject {
 
     @Published private(set) var token: String?
     @Published var email: String?
+    @Published var role: String?
 
     private init() {
         token = readKeychain()
         email = UserDefaults.standard.string(forKey: "email")
+        role = UserDefaults.standard.string(forKey: "role")
     }
 
     var isSignedIn: Bool { token != nil }
@@ -29,13 +31,20 @@ final class Session: ObservableObject {
         deleteKeychain()
         token = nil
         email = nil
+        role = nil
         UserDefaults.standard.removeObject(forKey: "email")
+        UserDefaults.standard.removeObject(forKey: "role")
     }
 
-    func remember(email: String) {
-        self.email = email
-        UserDefaults.standard.set(email, forKey: "email")
+    func remember(_ me: Me) {
+        email = me.email
+        role = me.role
+        UserDefaults.standard.set(me.email, forKey: "email")
+        UserDefaults.standard.set(me.role, forKey: "role")
     }
+
+    /// Research is for researchers and admins; everyone else never sees the tab.
+    var canResearch: Bool { role == "admin" || role == "researcher" }
 
     // MARK: Keychain
 
