@@ -158,6 +158,20 @@ struct Me: Codable {
     }
 }
 
+// The API sends naive UTC timestamps, sometimes with fractional seconds and sometimes without.
+// Formatters are expensive to build and these are only ever read, so they live here and are shared.
+private nonisolated(unsafe) let isoWithFraction: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+}()
+
+private nonisolated(unsafe) let isoPlain: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    return f
+}()
+
 // MARK: - The client
 
 actor API {
@@ -167,20 +181,15 @@ actor API {
         let c = URLSessionConfiguration.default
         c.timeoutIntervalForRequest = 20
         c.waitsForConnectivity = true
-        return c
+        return URLSession(configuration: c)
     }()
 
     private lazy var decoder: JSONDecoder = {
         let d = JSONDecoder()
-        // The API sends naive UTC timestamps, with and without fractional seconds.
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
         d.dateDecodingStrategy = .custom { decoder in
             var text = try decoder.singleValueContainer().decode(String.self)
             if !text.hasSuffix("Z") && !text.contains("+") { text += "Z" }
-            if let date = withFraction.date(from: text) ?? plain.date(from: text) { return date }
+            if let date = isoWithFraction.date(from: text) ?? isoPlain.date(from: text) { return date }
             throw DecodingError.dataCorrupted(
                 .init(codingPath: decoder.codingPath, debugDescription: "Not a date we recognise: \(text)"))
         }
