@@ -12,16 +12,21 @@ final class ResearchStore: ObservableObject {
     func load() async {
         loading = routes.isEmpty && analysis == nil
         defer { loading = false }
-        do {
-            async let routes = API.shared.researchRoutes()
-            async let analysis = API.shared.analysis(scope: scope)
-            (self.routes, self.analysis) = try await (routes, analysis)
-            problem = nil
-        } catch let error as APIError where error.isUnauthorized {
-            Session.shared.end()
-        } catch {
-            problem = error.localizedDescription
-        }
+        // Kept separate on purpose: when the two were assigned together, an analysis
+        // failure also blanked the list of routes that had loaded perfectly well.
+        async let fetchedRoutes = API.shared.researchRoutes()
+        async let fetchedAnalysis = API.shared.analysis(scope: scope)
+
+        var trouble: String?
+        do { routes = try await fetchedRoutes }
+        catch let e as APIError where e.isUnauthorized { Session.shared.end(); return }
+        catch { trouble = error.localizedDescription }
+
+        do { analysis = try await fetchedAnalysis }
+        catch let e as APIError where e.isUnauthorized { Session.shared.end(); return }
+        catch { trouble = trouble ?? error.localizedDescription }
+
+        problem = trouble
     }
 }
 
@@ -184,15 +189,23 @@ private struct RelativeBars: View {
             }
         }
         .chartYAxis {
-            AxisMarks { AxisValueLabel().font(.caption2).foregroundStyle(.secondary) }
+            AxisMarks { value in
+                AxisValueLabel {
+                    if let name = value.as(String.self) {
+                        Text(name).font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
     }
 }
 
 extension Double {
-    /// 0.032 -> "+3.2%"
+    /// 0.032 -> "+3.2%". Anything that rounds to nothing is written as a flat "0.0%",
+    /// because "-0.0%" reads like a real fall.
     var asSignedPercent: String {
-        String(format: "%+.1f%%", self * 100)
+        let pct = (self * 100 * 10).rounded() / 10
+        return pct == 0 ? "0.0%" : String(format: "%+.1f%%", pct)
     }
 }
 

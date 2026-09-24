@@ -196,12 +196,14 @@ struct ChangeLabel: View {
 }
 
 extension String {
-    /// "2026-12-18" -> "Fri 18 Dec". Falls back to the raw text rather than showing nothing.
+    /// "2026-12-18" -> "Fri 18 Dec". Also takes a full timestamp, since some fields carry
+    /// one. Falls back to the raw text rather than showing nothing.
     var prettyDate: String {
         let iso = DateFormatter()
         iso.dateFormat = "yyyy-MM-dd"
         iso.timeZone = TimeZone(identifier: "UTC")
-        guard let date = iso.date(from: self) else { return self }
+        let dayOnly = String(prefix(10))
+        guard let date = iso.date(from: dayOnly) else { return self }
         let out = DateFormatter()
         out.dateFormat = "EEE d MMM"
         out.timeZone = TimeZone(identifier: "UTC")

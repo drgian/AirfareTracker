@@ -397,8 +397,18 @@ actor API {
         return d
     }()
 
-    private func request(_ method: String, _ path: String, body: [String: Any?]? = nil) throws -> URLRequest {
-        var r = URLRequest(url: Env.apiBase.appendingPathComponent(path))
+    private func request(_ method: String, _ path: String,
+                         query: [String: String] = [:],
+                         body: [String: Any?]? = nil) throws -> URLRequest {
+        var parts = URLComponents(url: Env.apiBase.appendingPathComponent(path),
+                                  resolvingAgainstBaseURL: false)
+        if !query.isEmpty {
+            parts?.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        guard let url = parts?.url else {
+            throw APIError(status: 0, message: "Couldn't build a request for \(path).")
+        }
+        var r = URLRequest(url: url)
         r.httpMethod = method
         if let token = Session.shared.token {
             r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -463,7 +473,7 @@ actor API {
     }
 
     func analysis(scope: String = "all") async throws -> Analysis {
-        try await send(try request("GET", "analysis?scope=\(scope)"), as: Analysis.self)
+        try await send(try request("GET", "analysis", query: ["scope": scope]), as: Analysis.self)
     }
 
     func researchRoutes() async throws -> [ResearchRoute] {
