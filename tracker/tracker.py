@@ -276,12 +276,22 @@ def parse_offers(data, trip):
     sets   = data["data"]["gqlSearchOffers"].get("gqlOffersSets") or []
     if not sets:
         return None, "no_flights", "Delta has no flights on this route for these dates."
+    if not any(o.get("trips") for o in sets):
+        return None, "no_flights", "Delta doesn't sell these exact dates; it only offered alternatives."
     fastest = not pinned and trip.get("preference") == "fastest"
     matched, candidates = False, []
     for offer_set in sets:
-        t = offer_set["trips"][0]
+        # When Delta has nothing for the exact dates it answers with alternative-date offers,
+        # which carry no "trips". Skip those rather than letting one of them lose the page.
+        trips = offer_set.get("trips") or []
+        if not trips:
+            continue
+        t = trips[0]
+        segments = t.get("flightSegment") or []
+        if not segments:
+            continue
         flights = [f'{seg["marketingCarrier"]["carrierCode"]}{int(seg["marketingCarrier"]["carrierNum"])}'
-                   for seg in t["flightSegment"]]
+                   for seg in segments]
         if pinned and flights != pinned:
             continue
         matched = True
