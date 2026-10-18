@@ -68,6 +68,11 @@ header.top{display:flex;align-items:center;justify-content:space-between;padding
 .stat .v.hi{color:var(--hi)}.stat .v.lo{color:var(--lo)}
 .chart{padding:14px 14px 8px;margin-bottom:12px;height:300px}
 .chart canvas{width:100%!important;height:100%!important}
+.chart.research-chart{height:560px}
+@media (max-width:900px){.chart.research-chart{height:420px}}
+@media (max-width:640px){.chart.research-chart{display:none}}
+.desktop-only-note{display:none;color:var(--muted);font-size:.86rem;margin:2px 2px 12px}
+@media (max-width:640px){.desktop-only-note{display:block}}
 details.hist{margin-bottom:14px}
 details.hist summary{cursor:pointer;color:var(--muted);font-size:.86rem;font-weight:600;padding:6px 2px;list-style:none}
 details.hist summary::-webkit-details-marker{display:none}
@@ -473,7 +478,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.8.3';
+const VERSION = '1.8.4';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -1402,7 +1407,9 @@ async function showResearchData(id){
     el('td', {}, DOW[p.depart_dow].slice(0, 3)), el('td', {}, el('b', {}, money(p.price_usd))),
     el('td', {}, p.oil_usd != null ? money(p.oil_usd) : '—'), el('td', {}, p.flights || '—')));
   $('panel').replaceChildren(el('div', {}, head,
-    el('div', { class: 'card chart' }, canvas),
+    el('div', { class: 'card chart research-chart' }, canvas),
+    el('p', { class: 'desktop-only-note' }, 'The price chart needs a wider screen — open this on a computer. '
+      + 'Every observation is listed below.'),
     el('details', { class: 'hist' }, el('summary', {}, `Every observation · ${priced.length}`),
       el('div', { class: 'card tablewrap' }, el('table', {},
         el('thead', {}, el('tr', {}, ['Looked on', 'Departs', 'Days out', 'Day', 'Price', 'Oil', 'Flights']
