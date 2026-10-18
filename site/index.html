@@ -478,7 +478,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.8.4';
+const VERSION = '1.8.5';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -1306,7 +1306,7 @@ const whiskers = { id: 'whiskers', afterDatasetsDraw(chart) {
   ctx.restore();
 } };
 
-function relChart(canvas, labels, rows, { connect = false } = {}){
+function relChart(canvas, labels, rows, { connect = false, titles = null, allTicks = false } = {}){
   const vals = rows.map(r => r ? r.rel * 100 : null), ns = rows.map(r => r ? r.n : 0);
   const sds = rows.map(r => r && r.sd != null && r.n > 1 ? r.sd * 100 : null);
   // 95% confidence interval of the mean: how well we know this dot, not how far fares swing
@@ -1324,7 +1324,7 @@ function relChart(canvas, labels, rows, { connect = false } = {}){
         pointBackgroundColor: vals.map((v, i) => color(v, ns[i])) }] },
     options: { maintainAspectRatio: false, animation: false, layout: { padding: { top: 6 } },
       plugins: { legend: { display: false }, tooltip: { displayColors: false, callbacks: {
-        title: items => labels[items[0].dataIndex],
+        title: items => (titles || labels)[items[0].dataIndex],
         label: item => {
           const i = item.dataIndex, n = ns[i], v = vals[i], sd = sds[i], ci = cis[i];
           if (!n) return 'No checks yet';
@@ -1335,7 +1335,10 @@ function relChart(canvas, labels, rows, { connect = false } = {}){
           return lines;
         } } } },
       scales: {
-        x: { offset: true, grid: { display: false }, ticks: { color: ink, font: { size: 11 } } },
+        // allTicks turns off autoSkip, which otherwise drops every other label when space is tight.
+        // Only worth it where the labels are short enough to survive it (the weekdays).
+        x: { offset: true, grid: { display: false },
+             ticks: { color: ink, font: { size: 11 }, ...(allTicks ? { autoSkip: false } : {}) } },
         y: { min: -lim, max: lim, grid: { color: c => c.tick.value === 0 ? css('--faint') : grid },
              border: { display: false }, ticks: { color: ink, maxTicksLimit: 5, callback: v => (v > 0 ? '+' : '') + v + '%' } },
       } },
@@ -1489,11 +1492,13 @@ async function renderAnalysis(){
       el('thead', {}, el('tr', {}, ['Route', 'Departs', 'Checks', 'Lowest', 'Highest', 'Latest', 'Volatility'].map(h => el('th', {}, h)))),
       el('tbody', {}, routeRows)))));
   const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  relChart(dowCv, DOW, DOW.map((_, i) => d.by_dow.find(r => r.dow === i + 1)));
+  relChart(dowCv, DOW, DOW.map((_, i) => d.by_dow.find(r => r.dow === i + 1)), { allTicks: true });
   const SLOTS = ['Morning', 'Afternoon', 'Evening', 'Night'];
   relChart(timeCv, SLOTS, SLOTS.map(sl => d.by_time.find(r => r.slot === sl)));
   const OUT = ['0–7 days', '1–2 weeks', '2–4 weeks', '1–2 months', '2–3 months', '3–6 months', '6+ months'];
-  relChart(outCv, OUT, OUT.map(l => d.by_days_out.find(r => r.label === l)), { connect: true });
+  // Short forms on the axis so all seven buckets fit; the tooltip still says it in full
+  const OUT_SHORT = ['0–7d', '1–2wk', '2–4wk', '1–2mo', '2–3mo', '3–6mo', '6mo+'];
+  relChart(outCv, OUT_SHORT, OUT.map(l => d.by_days_out.find(r => r.label === l)), { connect: true, titles: OUT });
 }
 
 // ── add / edit trip ──

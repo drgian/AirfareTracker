@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.5 (2026-10-17)
+
+- "Price by day of the week" now labels all seven days. Chart.js was skipping every other one when space was
+  tight, so Tuesday, Thursday and Saturday had no label at all — including Saturday, which is the most expensive
+  day in the data so far.
+- "Price by time before departure" uses short bucket names (0–7d, 1–2wk, 2–4mo…) so more of them fit; the tooltip
+  still spells each one out in full.
+
 ## 1.8.4 (2026-10-17)
 
 - The Research price chart is now hidden on phones, where it was too cramped to read, and replaced by a line
