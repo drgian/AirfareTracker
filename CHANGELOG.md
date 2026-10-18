@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.3 (2026-10-17)
+
+- The whiskers on the Analysis charts are now the 95% confidence interval of each average instead of ±1 standard
+  deviation. The old bars showed how far fares swing (about ±12%), which barely moves however much data arrives;
+  these narrow as checks accumulate, which is what you want from an error bar. With today's data Saturday
+  (+2.6% ±2.4) and Tuesday (−2.3% ±1.8) now separate clearly, where ±12% whiskers buried the difference. The
+  spread of the fares themselves is still in the tooltip, and the chart zooms in now that the bars are smaller.
+
 ## 1.8.2 (2026-10-17)
 
 - Fix: the Research chart plotted every observation on top of itself in a single vertical line, with no labels on
