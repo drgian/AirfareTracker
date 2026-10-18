@@ -56,6 +56,7 @@ header.top{display:flex;align-items:center;justify-content:space-between;padding
 .tab:hover{color:var(--text)}
 .tab[aria-selected=true]{color:var(--text);border-bottom-color:var(--accent)}
 .toolbar .btn{margin-bottom:8px;white-space:nowrap}
+@media (max-width:640px){.toolbar{flex-wrap:wrap}.toolbar .tabs{order:2;flex:1 1 100%;min-width:0;scrollbar-width:thin}.toolbar>div:last-child{order:1;justify-content:flex-end;flex-wrap:wrap}}
 .trip-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:16px}
 .trip-head h2{font-size:1.35rem;letter-spacing:-.01em}
 .sub{color:var(--muted);font-size:.9rem}
@@ -472,7 +473,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.8.0';
+const VERSION = '1.8.1';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -777,6 +778,8 @@ function render(){
   if (archived.length) tabs.push(el('button', { class: 'tab archived-tab', role: 'tab', 'aria-selected': String(onArchived),
     onclick: () => select('archived') }, `Archived (${archived.length})`));
   $('tabs').replaceChildren(...tabs);
+  // The tab row is a scroller on phones: don't leave the selected trip parked off screen
+  $('tabs').querySelector('[aria-selected=true]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   if (chart) { chart.destroy(); chart = null; }
   if (selectedId === 'archived') { $('panel').replaceChildren(archivedList(archived)); return; }
   if (selectedId === 'overview') { $('panel').replaceChildren(active.length ? overview(active) : emptyView()); return; }
