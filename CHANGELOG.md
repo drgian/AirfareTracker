@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.2 (2026-10-17)
+
+- Fix: the Research chart plotted every observation on top of itself in a single vertical line, with no labels on
+  the "days before departure" axis. The axis was a category scale, which cannot place numeric points. Prices now
+  spread across the axis as intended, and each departure date's line runs in order.
+
 ## 1.8.1 (2026-10-17)
 
 - Fix: on a phone the trip tabs were squeezed out of the toolbar by the Analysis, Research, Admin and Add trip
