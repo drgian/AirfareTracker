@@ -473,7 +473,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.8.2';
+const VERSION = '1.8.3';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -1281,14 +1281,16 @@ $('research-open').addEventListener('click', () => { selectedId = 'research'; re
 const pct = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%';
 const MIN_N = 3;   // bars with fewer checks are shown faded as "not enough data"
 
-// Dots = average vs. the route's own average; whiskers = ±1 standard deviation of the checks in that group
+// Dots = average vs. the route's own average; whiskers = the 95% confidence interval of that average
+// (1.96 x sd / sqrt(n)). Deliberately NOT ±1σ: σ measures how much fares bounce around and barely
+// moves as data accumulates, while this narrows as the average becomes better known.
 const whiskers = { id: 'whiskers', afterDatasetsDraw(chart) {
   const ds = chart.data.datasets[0], { ctx, scales: { y } } = chart, meta = chart.getDatasetMeta(0);
   ctx.save(); ctx.lineWidth = 2;
   meta.data.forEach((pt, i) => {
-    const v = ds.data[i], sd = ds.sd[i];
-    if (v == null || sd == null) return;
-    const top = y.getPixelForValue(v + sd), bot = y.getPixelForValue(v - sd);
+    const v = ds.data[i], ci = ds.ci[i];
+    if (v == null || ci == null) return;
+    const top = y.getPixelForValue(v + ci), bot = y.getPixelForValue(v - ci);
     ctx.strokeStyle = ds.pointBackgroundColor[i];
     ctx.beginPath();
     ctx.moveTo(pt.x, top); ctx.lineTo(pt.x, bot);
@@ -1302,25 +1304,28 @@ const whiskers = { id: 'whiskers', afterDatasetsDraw(chart) {
 function relChart(canvas, labels, rows, { connect = false } = {}){
   const vals = rows.map(r => r ? r.rel * 100 : null), ns = rows.map(r => r ? r.n : 0);
   const sds = rows.map(r => r && r.sd != null && r.n > 1 ? r.sd * 100 : null);
+  // 95% confidence interval of the mean: how well we know this dot, not how far fares swing
+  const cis = sds.map((sd, i) => sd == null ? null : 1.96 * sd / Math.sqrt(ns[i]));
   const color = (v, n) => { const c = css(v < 0 ? '--lo' : '--hi'); return n >= MIN_N ? c : c + '55'; };
   const ink = css('--muted'), grid = css('--grid');
-  const reach = vals.map((v, i) => v == null ? 0 : Math.abs(v) + (sds[i] || 0));
-  const lim = Math.max(10, Math.ceil(Math.max(...reach) / 5) * 5);
+  const reach = vals.map((v, i) => v == null ? 0 : Math.abs(v) + (cis[i] || 0));
+  const lim = Math.max(5, Math.ceil(Math.max(...reach) / 5) * 5);
   analysisCharts.push(new Chart(canvas, {
     type: 'line',
     plugins: [whiskers],
     data: { labels: labels.map((l, i) => [l, ns[i] ? `n=${ns[i]}` : '—']),
-      datasets: [{ data: vals, sd: sds, showLine: connect, spanGaps: true, borderColor: css('--faint'), borderWidth: 1.5,
+      datasets: [{ data: vals, sd: sds, ci: cis, showLine: connect, spanGaps: true, borderColor: css('--faint'), borderWidth: 1.5,
         pointRadius: 5, pointHoverRadius: 7, pointBorderWidth: 2, pointBorderColor: css('--card'),
         pointBackgroundColor: vals.map((v, i) => color(v, ns[i])) }] },
     options: { maintainAspectRatio: false, animation: false, layout: { padding: { top: 6 } },
       plugins: { legend: { display: false }, tooltip: { displayColors: false, callbacks: {
         title: items => labels[items[0].dataIndex],
         label: item => {
-          const i = item.dataIndex, n = ns[i], v = vals[i], sd = sds[i];
+          const i = item.dataIndex, n = ns[i], v = vals[i], sd = sds[i], ci = cis[i];
           if (!n) return 'No checks yet';
           const lines = [`Average: ${Math.abs(v).toFixed(1)}% ${v < 0 ? 'below' : 'above'} the route's average`];
-          if (sd != null) lines.push(`±1σ: ${sd.toFixed(1)}%  (±1 standard error: ${(sd / Math.sqrt(n)).toFixed(1)}%)`);
+          if (ci != null) lines.push(`95% confidence: ±${ci.toFixed(1)}%`);
+          if (sd != null) lines.push(`fares themselves swing ±${sd.toFixed(1)}% (1σ)`);
           lines.push(`${n} check${n === 1 ? '' : 's'}${n < MIN_N ? ' · not enough data to read into yet' : ''}`);
           return lines;
         } } } },
@@ -1446,7 +1451,9 @@ async function renderAnalysis(){
   const note = el('div', { class: 'card banner archived-banner' }, el('b', {}, 'Early data'),
     `Based on ${s.checks} real price checks across ${s.routes} route${s.routes === 1 ? '' : 's'} since ${fmtDate(s.since.slice(0, 10))}. `
     + 'Each price is compared with its own route’s average, so blue means cheaper than usual and red means pricier. '
-    + 'Dots are averages and whiskers show ±1σ (the spread of prices in that group). '
+    + 'Dots are averages and whiskers are the 95% confidence interval of that average — they narrow as checks '
+    + 'accumulate. Where two whiskers do not overlap, the difference is probably real; where they do, it is not. '
+    + '(The spread of the fares themselves, ±1σ, is in the tooltip and stays wide no matter how much data we have.) '
     + 'Patterns firm up after a few hundred checks; faded dots have too few checks to trust.');
   const plot = (title, sub) => { const cv = el('canvas', { role: 'img', 'aria-label': title });
     return [el('div', { class: 'card an-card' }, el('h3', {}, title), el('p', { class: 'sub' }, sub), el('div', { class: 'plot' }, cv)), cv]; };
