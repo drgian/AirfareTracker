@@ -22,7 +22,7 @@ import psycopg
 from psycopg.rows import dict_row
 from playwright.async_api import async_playwright
 
-VERSION = "1.8.0"
+VERSION = "1.8.6"
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -847,16 +847,21 @@ def push_to_email(cfg, conn, email, title, body, thread=None):
 # ── Research: the same trip priced every week, six months out ─────────────────
 RESEARCH_SPREAD_HOURS = 20      # spread the day's searches over this many hours, not in a burst
 
-def wti_price(conn):
-    """Today's WTI oil price, fetched once a day from the St. Louis Fed (no key needed).
+_WTI_FETCHED_AT = None          # module-level so a long-running worker doesn't re-pull every few minutes
 
-    The series lags by a few days and skips weekends, so we take the most recent published figure.
-    A missing price isn't fatal - the observation is still recorded, just without it.
+def refresh_wti(conn):
+    """Store FRED's daily WTI series under each close's OWN trading date.
+
+    FRED publishes DCOILWTICO about a week in arrears. The old code took "the most recent
+    published figure" and filed it under today, which stamped a week-old price onto every
+    observation - four weeks of data ended up with five distinct values instead of sixteen.
+    Storing the series by its real dates lets us attach the right day's price, and lets a
+    later run fill in days FRED had not published yet.
     """
-    today = utcnow().date()
-    row = conn.execute("SELECT wti_usd FROM market_prices WHERE day=%s", (today,)).fetchone()
-    if row:
-        return row["wti_usd"]
+    global _WTI_FETCHED_AT
+    now = utcnow()
+    if _WTI_FETCHED_AT and (now - _WTI_FETCHED_AT).total_seconds() < 6 * 3600:
+        return 0
     url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILWTICO"
     csv = ""
     try:
@@ -868,22 +873,57 @@ def wti_price(conn):
                                  capture_output=True, text=True, check=True).stdout
         except Exception:
             csv = ""
-    price = None
-    for line in reversed(csv.strip().splitlines()):
+    if not csv:
+        print("  couldn't fetch the oil series; leaving what we have")
+        return 0
+    cutoff = (now.date() - timedelta(days=120)).isoformat()
+    saved = 0
+    for line in csv.strip().splitlines():
         parts = line.split(",")
-        if len(parts) == 2 and parts[0][:1].isdigit():
-            try:
-                price = float(parts[1])
-                break
-            except ValueError:
-                continue          # FRED writes "." on holidays
-    if price is None:
-        print("  couldn't fetch the oil price; recording without it")
-        return None
-    conn.execute("INSERT INTO market_prices (day, wti_usd) VALUES (%s,%s) ON CONFLICT (day) DO NOTHING",
-                 (today, price))
-    print(f"  oil (WTI): ${price:,.2f}")
-    return price
+        if len(parts) != 2 or not parts[0][:1].isdigit():
+            continue
+        day, raw = parts[0].strip(), parts[1].strip()
+        if day < cutoff or not raw or raw == ".":
+            continue          # FRED writes "." on holidays; weekends are simply absent
+        try:
+            price = float(raw)
+        except ValueError:
+            continue
+        conn.execute("INSERT INTO market_prices (day, wti_usd) VALUES (%s,%s) "
+                     "ON CONFLICT (day) DO UPDATE SET wti_usd=EXCLUDED.wti_usd", (day, price))
+        saved += 1
+    _WTI_FETCHED_AT = now
+    if saved:
+        print(f"  oil (WTI): {saved} trading days up to date")
+    return saved
+
+def oil_for(conn, day):
+    """The WTI close for `day`, or the last trading day before it - WTI doesn't trade weekends.
+
+    Returns None when FRED hasn't published anything on or before `day` yet; the observation is
+    still recorded, and backfill_recent_oil fills it in once the figure appears.
+    """
+    row = conn.execute("SELECT wti_usd FROM market_prices WHERE day <= %s ORDER BY day DESC LIMIT 1",
+                       (day,)).fetchone()
+    return row["wti_usd"] if row else None
+
+def backfill_recent_oil(conn, days=30):
+    """Re-point recent observations at the best figure now available.
+
+    Because FRED runs a week behind, a row written today gets the newest close we have, which
+    may be several days old. Once FRED publishes the real one this corrects it.
+    """
+    since = utcnow().date() - timedelta(days=days)
+    n = conn.execute(
+        "UPDATE research_prices rp SET oil_usd = ("
+        "  SELECT mp.wti_usd FROM market_prices mp WHERE mp.day <= rp.observed_on "
+        "  ORDER BY mp.day DESC LIMIT 1) "
+        "WHERE rp.observed_on >= %s AND rp.oil_usd IS DISTINCT FROM ("
+        "  SELECT mp.wti_usd FROM market_prices mp WHERE mp.day <= rp.observed_on "
+        "  ORDER BY mp.day DESC LIMIT 1)", (since,)).rowcount
+    if n:
+        print(f"  oil: corrected {n} recent observation(s) as FRED caught up")
+    return n
 
 def build_research_queue(conn):
     """Each morning, lay out the day's ladder: every week from next week to six months out."""
@@ -916,7 +956,9 @@ async def run_research(cfg, conn, page):
         (utcnow(),)).fetchall()
     if not due:
         return 0
-    oil = wti_price(conn)
+    refresh_wti(conn)
+    backfill_recent_oil(conn)
+    oil = oil_for(conn, utcnow().date())
     done = 0
     for item in due:
         conn.execute("UPDATE research_queue SET started_at=%s WHERE id=%s", (utcnow(), item["id"]))

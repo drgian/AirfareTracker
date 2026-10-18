@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.6 (2026-10-18)
+
+- Fix: the oil price recorded against each research observation was about a week stale. FRED publishes its daily
+  WTI series in arrears, and the tracker took "the most recent published figure" and filed it under today — so
+  four weeks of data carried just five distinct values, and a real 11% one-day drop on 25 September was recorded
+  as no change at all. The series is now stored under each close's own trading date, observations take the price
+  for their own day (carrying forward from Friday across weekends), and a later run fills in days FRED had not
+  yet published. Existing data was backfilled: 349 observations now span 16 distinct oil prices from $85.23 to
+  $101.91, matching FRED exactly.
+
 ## 1.8.5 (2026-10-17)
 
 - "Price by day of the week" now labels all seven days. Chart.js was skipping every other one when space was
