@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.7 (2026-10-18)
+
+- Research and Analysis are now one tab, called Research. The route cards come first, with the analysis charts and
+  the price-movement summary underneath, and the separate Analysis button is gone. Anyone whose browser remembered
+  the old Analysis tab lands on Research instead. One fewer button also gives the trip tabs more room on a phone.
+
 ## 1.8.6 (2026-10-18)
 
 - Fix: the oil price recorded against each research observation was about a week stale. FRED publishes its daily
