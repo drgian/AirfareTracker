@@ -473,7 +473,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.8.1';
+const VERSION = '1.8.2';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -1408,7 +1408,8 @@ async function showResearchData(id){
   const palette = ['#003366', '#c8102e', '#0d5eaf', '#1c2b5e', '#2e7d32', '#8e24aa', '#ef6c00'];
   const sets = Object.entries(byDeparture).slice(0, 7).map(([dep, pts], i) => ({
     label: dep, borderColor: palette[i % palette.length], backgroundColor: palette[i % palette.length],
-    data: pts.map(p => ({ x: p.days_out, y: p.price_usd })), tension: 0.3, pointRadius: 3, borderWidth: 2,
+    data: pts.map(p => ({ x: p.days_out, y: p.price_usd })).sort((a, b) => a.x - b.x),
+    tension: 0.3, pointRadius: 3, borderWidth: 2,
   }));
   researchCharts.push(new Chart(canvas, {
     type: 'line',
@@ -1417,7 +1418,9 @@ async function showResearchData(id){
       plugins: { legend: { display: true, labels: { color: css('--muted') } },
         tooltip: { callbacks: { label: i => `${i.dataset.label}: ${money(i.parsed.y)} at ${i.parsed.x} days out` } } },
       scales: {
-        x: { reverse: true, title: { display: true, text: 'days before departure', color: css('--muted') },
+        // Without an explicit type this is a category scale, which can't place {x: number} points:
+        // every observation lands on one pixel and no ticks are drawn.
+        x: { type: 'linear', reverse: true, title: { display: true, text: 'days before departure', color: css('--muted') },
              ticks: { color: css('--muted') }, grid: { color: css('--grid') } },
         y: { ticks: { color: css('--muted'), callback: v => money(v) }, grid: { color: css('--grid') } } } },
   }));
