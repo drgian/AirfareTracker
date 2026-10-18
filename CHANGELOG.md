@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.4 (2026-10-17)
+
+- The Research price chart is now hidden on phones, where it was too cramped to read, and replaced by a line
+  pointing to the full table of observations underneath. On a computer it is much larger: 560px tall at full
+  width (420px on smaller laptops), up from 300px. The price-history chart on a trip is unchanged.
+
 ## 1.8.3 (2026-10-17)
 
 - The whiskers on the Analysis charts are now the 95% confidence interval of each average instead of ±1 standard
