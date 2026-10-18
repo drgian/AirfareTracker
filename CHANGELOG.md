@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.1 (2026-10-17)
+
+- Fix: on a phone the trip tabs were squeezed out of the toolbar by the Analysis, Research, Admin and Add trip
+  buttons, leaving only the trip you last opened reachable and no way to tap "My trips". The tabs now get their
+  own row on narrow screens, and the selected trip scrolls into view. Admins and researchers saw this worst,
+  because they have the most buttons competing for the row.
+
 ## 1.8.0 (2026-09-23)
 
 - Groundwork for the iPhone app: the API now accepts a sign-in straight from the app, remembers which phones belong
