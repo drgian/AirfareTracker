@@ -333,7 +333,6 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
       <div class="toolbar">
         <div class="tabs" role="tablist" id="tabs"></div>
         <div style="display:flex;gap:8px;align-items:flex-end">
-          <button class="btn" id="analysis-open" hidden>Analysis</button>
           <button class="btn" id="research-open" hidden>Research</button>
           <button class="btn" id="admin-open" hidden>Admin</button>
           <button class="btn primary" id="add-open">+ Add trip</button>
@@ -478,7 +477,7 @@ footer{color:var(--faint);font-size:.8rem;text-align:center;padding:40px 0 28px;
 
 <script>
 // flightfare.io/dev/ is the test copy: its own API and database, and its own sign-in
-const VERSION = '1.8.5';
+const VERSION = '1.8.7';
 const DEV = location.pathname.startsWith('/dev');
 const API = DEV ? 'https://api.flightfare.io/dev' : 'https://api.flightfare.io';
 const KEY = DEV ? { session: 'ff-dev-session', trip: 'ff-dev-trip' } : { session: 'ff-session', trip: 'ff-trip' };
@@ -732,7 +731,6 @@ async function loadApp(){
 
   $('acct-email').textContent = me.email;
   $('admin-open').hidden = me.role !== 'admin';
-  $('analysis-open').hidden = !['researcher', 'admin'].includes(me.role);
   $('research-open').hidden = !['researcher', 'admin'].includes(me.role);
   $('pw-banner').hidden = me.has_password || me.has_google;
   trips = list;
@@ -752,15 +750,11 @@ async function loadApp(){
 }
 function select(id){ selectedId = id; store.set(KEY.trip, id); render(); }
 function render(){
+  // Analysis was folded into Research; honour sessions that still remember the old tab
+  if (selectedId === 'analysis') selectedId = 'research';
   $('admin-open').classList.toggle('primary', selectedId === 'admin');
-  $('analysis-open').classList.toggle('primary', selectedId === 'analysis');
   $('research-open').classList.toggle('primary', selectedId === 'research');
   analysisCharts.forEach(c => c.destroy()); analysisCharts = [];
-  if (selectedId === 'analysis') {
-    $('tabs').replaceChildren(...trips.filter(t => !t.archived).map(t => el('button', { class: 'tab', role: 'tab', 'aria-selected': 'false', onclick: () => select(t.id) }, t.label)));
-    if (chart) { chart.destroy(); chart = null; }
-    return renderAnalysis();
-  }
   if (selectedId === 'research') {
     $('tabs').replaceChildren(...trips.filter(t => !t.archived).map(t => el('button', { class: 'tab', role: 'tab', 'aria-selected': 'false', onclick: () => select(t.id) }, t.label)));
     if (chart) { chart.destroy(); chart = null; }
@@ -1281,7 +1275,6 @@ async function renderUserDetail(id){
 
 // ── analysis (researchers and admins) ──
 let analysisCharts = [];
-$('analysis-open').addEventListener('click', () => { selectedId = 'analysis'; render(); });
 $('research-open').addEventListener('click', () => { selectedId = 'research'; render(); });
 const pct = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%';
 const MIN_N = 3;   // bars with fewer checks are shown faded as "not enough data"
@@ -1386,7 +1379,10 @@ async function renderResearch(){
           try { await api(`/research/routes/${r.id}`, { method: 'DELETE' }); renderResearch(); }
           catch (err) { alert(err.message); }
         } }, 'Remove'))));
-  $('panel').replaceChildren(el('div', {}, head, el('div', { class: 'ov-grid' }, ...cards)));
+  const analysisHost = el('div', { class: 'analysis-host' });
+  $('panel').replaceChildren(el('div', {}, head, el('div', { class: 'ov-grid' }, ...cards), analysisHost));
+  // The canvases must be in the document before Chart.js measures them, so render after inserting.
+  await renderAnalysis({ into: analysisHost });
 }
 
 async function showResearchData(id){
@@ -1441,21 +1437,23 @@ async function showResearchData(id){
   }));
 }
 
-async function renderAnalysis(){
+// `into` lets Research host this section; without it the analysis takes the whole panel.
+async function renderAnalysis({ into = null } = {}){
+  const place = node => (into || $('panel')).replaceChildren(node);
   const scope = store.get(KEY.session + '-scope') || 'all';
-  $('panel').replaceChildren(el('div', { class: 'card pending checking' }, 'Crunching the numbers…'));
+  place(el('div', { class: 'card pending checking' }, 'Crunching the numbers…'));
   let d;
   try { d = await api(`/analysis?scope=${scope}`); }
-  catch (err) { $('panel').replaceChildren(el('div', { class: 'card banner' }, err.message)); return; }
-  if (selectedId !== 'analysis') return;
-  const setScope = v => { store.set(KEY.session + '-scope', v); renderAnalysis(); };
+  catch (err) { place(el('div', { class: 'card banner' }, err.message)); return; }
+  if (selectedId !== 'research' && selectedId !== 'analysis') return;
+  const setScope = v => { store.set(KEY.session + '-scope', v); renderAnalysis({ into }); };
   const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Which trips' },
     el('button', { 'aria-pressed': String(scope === 'all'), onclick: () => setScope('all') }, 'All FlightFare routes'),
     el('button', { 'aria-pressed': String(scope === 'mine'), onclick: () => setScope('mine') }, 'My trips'));
   const s = d.summary, c = d.changes;
   const head = el('div', { class: 'trip-head' }, el('h2', {}, 'Analysis'), seg);
   if (!s.checks) {
-    $('panel').replaceChildren(el('div', {}, head, el('div', { class: 'card pending' }, 'No price checks to analyze yet.')));
+    place(el('div', {}, head, el('div', { class: 'card pending' }, 'No price checks to analyze yet.')));
     return;
   }
   const note = el('div', { class: 'card banner archived-banner' }, el('b', {}, 'Early data'),
@@ -1478,7 +1476,7 @@ async function renderAnalysis(){
     el('td', {}, el('span', { style: 'color:var(--lo);font-weight:650' }, money(r.low))),
     el('td', {}, el('span', { style: 'color:var(--hi);font-weight:650' }, money(r.high))),
     el('td', {}, money(r.latest)), el('td', {}, (r.volatility * 100).toFixed(1) + '%')));
-  $('panel').replaceChildren(el('div', {}, head, note,
+  place(el('div', {}, head, note,
     el('div', { class: 'an-grid' }, dowCard, timeCard, outCard),
     el('h3', { class: 'admin-h' }, 'How prices move between checks'),
     el('div', { class: 'admin-grid' },
